@@ -4,6 +4,26 @@ All notable changes to Localizer.
 
 ## [Unreleased]
 
+### M3 — runner + CLI + live Zimmo
+- `core/dedup.py`: `merge_or_insert()` — inserts a new canonical listing
+  or merges a candidate into the existing one with the same fingerprint.
+  Existing UUID is preserved as the stable handle. Sources are unioned
+  by `(source_name, source_id)`. Null fields on the existing row are
+  filled from the candidate; non-null fields are preserved.
+- `core/runner.py`: `run_refresh()` orchestrates discover → fetch →
+  parse → merge_or_insert per connector. Per-connector statistics
+  (`ConnectorResult`) and aggregate `RefreshResult`. Errors per-listing
+  do not abort the connector; errors per-connector do not abort the
+  rest.
+- `main.py`: argparse-driven CLI with `localizer refresh
+  [--source X] [-v|-vv]`. Prints database path + per-connector summary.
+- `connectors/zimmo.py`: live `discover()` + `fetch()`. Sitemap-driven
+  discovery (`/sitemap.xml` → child sitemaps → filter URLs by postcode
+  + listing-shape).
+- 9 new tests: dedup-merge (insert / merge / fill-nulls / preserve-non-null
+  / source-dedup) + runner orchestration with fake connectors (insert /
+  merge / per-listing errors / NotImplementedError-safe).
+
 ### M2 — connector base + 3 stub connectors with fixtures
 - `connectors/base.py`: Connector Protocol (runtime-checkable), shared
   HTTPClient (httpx) with per-host RateLimiter and RobotsCache,

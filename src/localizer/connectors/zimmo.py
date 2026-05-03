@@ -9,8 +9,10 @@ discover() and fetch() land in M3 once we go live against the real site.
 
 from __future__ import annotations
 
+import logging
 import re
-from collections.abc import Iterable
+import xml.etree.ElementTree as ET
+from collections.abc import Iterable, Iterator
 from typing import Any, ClassVar
 
 from localizer.connectors._parsing import extract_json_ld, find_jsonld_by_type
@@ -30,7 +32,50 @@ from localizer.core.models import (
     SourceName,
 )
 
+log = logging.getLogger(__name__)
+
 _SOURCE_ID_FROM_URL = re.compile(r"/(\d{6,})(?:[-/]|$)")
+_POSTCODE_IN_URL = re.compile(r"/(\d{4})-")
+_SITEMAP_NAMESPACE = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
+
+
+def _iter_sitemap_locs(xml_text: str) -> Iterator[str]:
+    """Yield <loc> values from a sitemap or sitemapindex XML document.
+
+    Tolerant: malformed XML logs and yields nothing. Strips whitespace.
+    """
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        log.warning("Zimmo: sitemap XML parse failed: %s", exc)
+        return
+    for loc in root.iter(f"{_SITEMAP_NAMESPACE}loc"):
+        text = (loc.text or "").strip()
+        if text:
+            yield text
+
+
+def _is_listing_sitemap(url: str) -> bool:
+    """Heuristic: does this child-sitemap URL look like one with for-sale listings?"""
+    lowered = url.lower()
+    return any(s in lowered for s in ("te-koop", "for-sale", "huis", "appartement", "listing"))
+
+
+def _looks_like_listing_url(url: str) -> bool:
+    """Listing detail pages contain a 6+ digit numeric ID and a postcode segment."""
+    return bool(_SOURCE_ID_FROM_URL.search(url) and _POSTCODE_IN_URL.search(url))
+
+
+def _postcode_from_url(url: str) -> int | None:
+    m = _POSTCODE_IN_URL.search(url)
+    if m is None:
+        return None
+    try:
+        return int(m.group(1))
+    except ValueError:
+        return None
+
+
 _PROPERTY_TYPE_FROM_TEXT = (
     ("appartement", PropertyType.APPARTEMENT),
     ("studio", PropertyType.APPARTEMENT),
@@ -102,10 +147,51 @@ class ZimmoConnector:
     base_url: ClassVar[str] = "https://www.zimmo.be"
 
     def discover(self, client: HTTPClient, postcodes: Iterable[int]) -> Iterable[ListingRef]:
-        raise NotImplementedError("Zimmo discover() lands in M3.")
+        """Sitemap-driven discovery.
+
+        Strategy (best guess, will adjust on first live run):
+            1. GET /sitemap.xml — expect a <sitemapindex>.
+            2. For every child sitemap whose URL hints at "te-koop" / "for-sale"
+               (i.e. listings, not editorial pages), fetch it.
+            3. Each child is a <urlset> of listing-detail URLs. Yield those
+               whose path contains a postcode in `postcodes`.
+
+        Falls back to the explicit search URL on a per-postcode basis if
+        the sitemap is empty or unreachable.
+        """
+        wanted = set(postcodes)
+        seen: set[str] = set()
+        index_url = f"{self.base_url}/sitemap.xml"
+
+        try:
+            index_xml = client.get(index_url).text()
+            sub_sitemaps = list(_iter_sitemap_locs(index_xml))
+        except Exception as exc:  # pragma: no cover - live path
+            log.warning("Zimmo: sitemap index unreachable (%s) — falling back to search", exc)
+            sub_sitemaps = []
+
+        # Filter to listing sitemaps; reality may differ — adjust on first run.
+        listing_sitemaps = [u for u in sub_sitemaps if _is_listing_sitemap(u)] or sub_sitemaps
+
+        for sitemap_url in listing_sitemaps:
+            try:
+                sitemap_xml = client.get(sitemap_url).text()
+            except Exception as exc:  # pragma: no cover - live path
+                log.warning("Zimmo: sitemap %s failed: %s", sitemap_url, exc)
+                continue
+            for url in _iter_sitemap_locs(sitemap_xml):
+                if url in seen:
+                    continue
+                pc = _postcode_from_url(url)
+                if pc is None or pc not in wanted:
+                    continue
+                if not _looks_like_listing_url(url):
+                    continue
+                seen.add(url)
+                yield ListingRef(url=url)
 
     def fetch(self, client: HTTPClient, ref: ListingRef) -> RawListing:
-        raise NotImplementedError("Zimmo fetch() lands in M3.")
+        return client.get(ref.url)
 
     def parse(self, raw: RawListing) -> Listing:
         blocks = extract_json_ld(raw.text())

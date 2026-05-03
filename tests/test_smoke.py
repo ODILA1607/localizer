@@ -15,9 +15,29 @@ def test_version_is_set() -> None:
     assert localizer.__version__.count(".") == 2  # semver M.m.p
 
 
-def test_cli_returns_zero(capsys) -> None:
-    rc = main.cli()
+def test_cli_with_no_args_prints_version(capsys) -> None:
+    rc = main.cli([])
     assert rc == 0
+    captured = capsys.readouterr()
+    assert "Localizer" in captured.out
+
+
+def test_cli_help_lists_refresh_subcommand(capsys) -> None:
+    import pytest
+
+    with pytest.raises(SystemExit) as exit_info:
+        main.cli(["--help"])
+    assert exit_info.value.code == 0
+    captured = capsys.readouterr()
+    assert "refresh" in captured.out
+
+
+def test_cli_version_flag(capsys) -> None:
+    import pytest
+
+    with pytest.raises(SystemExit) as exit_info:
+        main.cli(["--version"])
+    assert exit_info.value.code == 0
     captured = capsys.readouterr()
     assert "Localizer" in captured.out
 
