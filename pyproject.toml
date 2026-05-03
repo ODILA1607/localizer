@@ -17,6 +17,8 @@ classifiers = [
 ]
 dependencies = [
     "pydantic>=2.9",
+    "httpx>=0.27",
+    "selectolax>=0.3.21",
 ]
 
 [project.optional-dependencies]

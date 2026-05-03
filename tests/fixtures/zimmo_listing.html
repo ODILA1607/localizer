@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<!--
+  Synthetic fixture, not a real Zimmo page. Modelled on the Schema.org
+  JSON-LD shape Zimmo currently emits for residence listings. Used to
+  prove the parser contract end-to-end offline. Will be replaced by a
+  saved real-world page in M3.
+-->
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <title>Charmante rijwoning te Kortrijk - Zimmo</title>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Residence",
+    "name": "Charmante rijwoning te renoveren",
+    "description": "Te renoveren rijwoning op een uitstekende locatie nabij het centrum.",
+    "url": "https://www.zimmo.be/nl/8500-kortrijk/te-koop/huis/123456789-charmante-rijwoning/",
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "Kerkstraat 12",
+      "postalCode": "8500",
+      "addressLocality": "Kortrijk",
+      "addressCountry": "BE"
+    },
+    "image": "https://images.zimmocdn.be/listings/123456789/cover.jpg",
+    "offers": {
+      "@type": "Offer",
+      "price": 275000,
+      "priceCurrency": "EUR"
+    },
+    "numberOfRooms": 3,
+    "floorSize": {
+      "@type": "QuantitativeValue",
+      "value": 140,
+      "unitCode": "MTK"
+    },
+    "energyEfficiencyScaleMin": "D",
+    "energyConsumption": 320
+  }
+  </script>
+</head>
+<body>
+  <h1>Charmante rijwoning te renoveren</h1>
+</body>
+</html>
