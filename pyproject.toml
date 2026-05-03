@@ -16,7 +16,7 @@ classifiers = [
     "Operating System :: Microsoft :: Windows",
 ]
 dependencies = [
-    # Filled in M1+. M0 has no runtime deps.
+    "pydantic>=2.9",
 ]
 
 [project.optional-dependencies]
