@@ -1,0 +1,63 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.installed.cfg
+*.egg
+
+# --- Virtual envs ---
+.venv/
+venv/
+env/
+.python-version
+
+# --- Build / dist ---
+build/
+dist/
+*.spec
+!Localizer.spec
+.eggs/
+
+# --- PyInstaller ---
+*.manifest
+pyinstaller-warn-*.txt
+
+# --- Test / coverage ---
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.cache/
+coverage.xml
+.mypy_cache/
+.ruff_cache/
+
+# --- IDE ---
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- OS ---
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# --- Local app data — never commit live scrape output ---
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+data/
+logs/
+cache/
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+secrets.toml
