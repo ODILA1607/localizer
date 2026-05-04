@@ -174,6 +174,15 @@ class ZimmoConnector:
             raise ValueError("Zimmo listing has no addressLocality")
 
         straat = (address.get("streetAddress") or "").strip() or None
+        geo = residence.get("geo") or {}
+        try:
+            lat = float(geo["latitude"]) if geo.get("latitude") is not None else None
+        except (TypeError, ValueError):
+            lat = None
+        try:
+            lng = float(geo["longitude"]) if geo.get("longitude") is not None else None
+        except (TypeError, ValueError):
+            lng = None
         opp = _coerce_int(floor_size.get("value"))
         slaapkamers = _coerce_int(residence.get("numberOfRooms"))
         prijs = _coerce_int(offers.get("price"))
@@ -210,6 +219,8 @@ class ZimmoConnector:
                 "postcode": postcode,
                 "gemeente": gemeente,
                 "straat": straat,
+                "lat": lat,
+                "lng": lng,
                 "prijs_eur": prijs,
                 "type": prop_type,
                 "oppervlakte_bewoonbaar_m2": opp,

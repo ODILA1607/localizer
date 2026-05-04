@@ -49,7 +49,17 @@ def test_immoscoop_picks_first_image_from_list(
 ) -> None:
     listing = ImmoscoopConnector().parse(immoscoop_listing_raw)
     assert listing.hoofd_foto_url is not None
-    assert "01.jpg" in str(listing.hoofd_foto_url)
+    assert "test-1.jpg" in str(listing.hoofd_foto_url)
+
+
+def test_immoscoop_extracts_geo_coordinates(
+    immoscoop_listing_raw: RawListing,
+) -> None:
+    listing = ImmoscoopConnector().parse(immoscoop_listing_raw)
+    assert listing.lat is not None
+    assert listing.lng is not None
+    assert 51.0 < listing.lat < 51.1  # Gent is around 51.05
+    assert 3.7 < listing.lng < 3.8
 
 
 def test_immoscoop_attaches_correct_source(

@@ -48,10 +48,18 @@ def test_immovlan_attaches_correct_source(immovlan_listing_raw: RawListing) -> N
     assert listing.sources[0].source_id == "vbe12345"
 
 
-def test_immovlan_rejects_html_without_jsonld() -> None:
+def test_immovlan_extracts_geo_coordinates(immovlan_listing_raw: RawListing) -> None:
+    listing = ImmovlanConnector().parse(immovlan_listing_raw)
+    assert listing.lat is not None and listing.lng is not None
+    assert 51.0 < listing.lat < 51.3  # Brugge ≈ 51.21
+    assert 3.0 < listing.lng < 3.4
+
+
+def test_immovlan_rejects_unparseable_url() -> None:
+    """URL that doesn't match the Immovlan pattern can't yield postcode/id."""
     raw = RawListing(
         source_url="https://www.immovlan.be/nl/detail/0",
         body=b"<html></html>",
     )
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Cannot parse Immovlan URL"):
         ImmovlanConnector().parse(raw)

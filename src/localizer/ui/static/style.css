@@ -24,6 +24,12 @@ a:hover { text-decoration: underline; }
 }
 .topbar strong { font-size: 1.05rem; }
 .topbar .muted { color: #aab1ba; }
+.topbar .nav { display: inline-flex; gap: 0.7rem; margin-left: 1rem; }
+.topbar .nav a { color: #aab1ba; }
+.topbar .nav a:hover { color: white; }
+
+.map-meta { padding: 0.4rem 0; color: #6e7781; font-size: 0.85rem; }
+
 .topbar-right input,
 .topbar-right button {
   padding: 0.35rem 0.6rem;

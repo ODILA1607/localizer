@@ -17,6 +17,10 @@
       {% if total_count is defined %}
         <span class="muted"> · {{ total_count }} listings in DB</span>
       {% endif %}
+      <nav class="nav">
+        <a href="/">Lijst</a>
+        <a href="/map">Kaart</a>
+      </nav>
     </div>
     <form action="/refresh" method="post" class="topbar-right">
       <input type="number" name="limit" placeholder="limit (e.g. 50)" min="1" max="2000">

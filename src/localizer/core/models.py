@@ -125,6 +125,8 @@ class Listing(BaseModel):
     postcode: PostcodeBE
     gemeente: str = Field(min_length=1)
     straat: str | None = None
+    lat: float | None = Field(default=None, ge=49.4, le=51.6)
+    lng: float | None = Field(default=None, ge=2.5, le=6.5)
 
     # Eigenschappen
     prijs_eur: int | None = Field(default=None, ge=0)

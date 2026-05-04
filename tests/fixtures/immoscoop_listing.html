@@ -1,53 +1,59 @@
 <!DOCTYPE html>
 <!--
-  Synthetic fixture, not a real Immoscoop page. Modelled on the Schema.org
-  JSON-LD shape Immoscoop currently emits. Will be replaced by a saved
-  real-world page in M3.
+  Synthetic Immoscoop fixture mirroring the real layout (verified
+  2026-05-04): two JSON-LD blocks (Product + House), OpenGraph hero
+  photo, specs in body text.
 -->
 <html lang="nl">
 <head>
   <meta charset="utf-8" />
   <title>Energiezuinig appartement te Gent - Immoscoop</title>
+  <meta property="og:title" content="Appartement te koop in Gent - € 365.000" />
+  <meta property="og:image" content="https://images.immoscoop.be/cp-test-1.jpg" />
   <script type="application/ld+json">
-  [
-    {
-      "@context": "https://schema.org",
-      "@type": "BreadcrumbList",
-      "itemListElement": []
-    },
-    {
-      "@context": "https://schema.org",
-      "@type": "Apartment",
-      "name": "Energiezuinig appartement met terras",
-      "description": "Modern appartement, instapklaar met zuidgericht terras.",
-      "url": "https://www.immoscoop.be/te-koop/9000-gent/987",
-      "address": {
-        "@type": "PostalAddress",
-        "streetAddress": "Sint-Pietersnieuwstraat 45",
-        "postalCode": "9000",
-        "addressLocality": "Gent",
-        "addressCountry": "BE"
-      },
-      "image": [
-        "https://cdn.immoscoop.be/listings/987654321/01.jpg",
-        "https://cdn.immoscoop.be/listings/987654321/02.jpg"
-      ],
-      "offers": {
-        "@type": "Offer",
-        "price": 365000,
-        "priceCurrency": "EUR"
-      },
-      "numberOfRooms": 2,
-      "floorSize": {
-        "@type": "QuantitativeValue",
-        "value": 92,
-        "unitCode": "MTK"
-      },
-      "energyEfficiencyScaleMin": "B",
-      "energyConsumption": 95
+  {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": "Energiezuinig appartement met terras",
+    "image": [
+      "https://images.immoscoop.be/cp-test-1.jpg",
+      "https://images.immoscoop.be/cp-test-2.jpg"
+    ],
+    "description": "Modern appartement, instapklaar met zuidgericht terras.",
+    "sku": "987",
+    "brand": {"@type": "Brand", "name": "IMMOSCOOP"},
+    "offers": {
+      "@type": "Offer",
+      "priceCurrency": "EUR",
+      "price": "365000",
+      "url": "https://www.immoscoop.be/te-koop/9000-gent/987"
     }
-  ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "House",
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "Sint-Pietersnieuwstraat 45",
+      "addressLocality": "Gent",
+      "postalCode": "9000"
+    },
+    "geo": {
+      "@type": "GeoCoordinates",
+      "latitude": 51.0473,
+      "longitude": 3.7287
+    }
+  }
   </script>
 </head>
-<body><h1>Energiezuinig appartement</h1></body>
+<body>
+  <h1>Energiezuinig appartement met terras</h1>
+  <ul class="specs">
+    <li>Aantal slaapkamers: 2 slaapkamers</li>
+    <li>Bewoonbare oppervlakte: 92 m²</li>
+    <li>EPC-label: B · 95 kWh/m²/jaar</li>
+  </ul>
+</body>
 </html>

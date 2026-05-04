@@ -24,7 +24,7 @@ from localizer.core.models import (
     SourceName,
 )
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS listing (
     postcode                    INTEGER NOT NULL,
     gemeente                    TEXT NOT NULL,
     straat                      TEXT,
+    lat                         REAL,
+    lng                         REAL,
     prijs_eur                   INTEGER,
     type                        TEXT NOT NULL,
     oppervlakte_bewoonbaar_m2   INTEGER,
@@ -115,11 +117,22 @@ def connect(db_path: Path | None = None) -> Iterator[sqlite3.Connection]:
 
 
 def init_schema(conn: sqlite3.Connection) -> None:
-    """Create tables if absent. Idempotent."""
+    """Create tables if absent + run migrations forward to SCHEMA_VERSION."""
     conn.executescript(SCHEMA_SQL)
     row = conn.execute("SELECT version FROM schema_version").fetchone()
     if row is None:
         conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
+        return
+
+    current = int(row["version"])
+    if current < 2:
+        # v2: add lat/lng columns to listing for the map view.
+        existing_cols = {r["name"] for r in conn.execute("PRAGMA table_info(listing)").fetchall()}
+        if "lat" not in existing_cols:
+            conn.execute("ALTER TABLE listing ADD COLUMN lat REAL")
+        if "lng" not in existing_cols:
+            conn.execute("ALTER TABLE listing ADD COLUMN lng REAL")
+        conn.execute("UPDATE schema_version SET version = ?", (2,))
 
 
 def initialise(db_path: Path | None = None) -> Path:

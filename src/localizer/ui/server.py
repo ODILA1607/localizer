@@ -130,6 +130,67 @@ def create_app() -> FastAPI:
             db.update_user_status(conn, listing_id, status)
         return RedirectResponse(next_url or "/", status_code=303)
 
+    @app.get("/map", response_class=HTMLResponse)
+    def map_view(
+        request: Request,
+        gemeente: Annotated[str | None, Query()] = None,
+        postcode: Annotated[int | None, Query()] = None,
+        prijs_min: Annotated[int | None, Query()] = None,
+        prijs_max: Annotated[int | None, Query()] = None,
+        slaapkamers_min: Annotated[int | None, Query()] = None,
+        epc: Annotated[list[str] | None, Query()] = None,
+        type_: Annotated[list[str] | None, Query(alias="type")] = None,
+        staat: Annotated[list[str] | None, Query()] = None,
+        bron: Annotated[list[str] | None, Query()] = None,
+        verberg_afgewezen: Annotated[bool, Query()] = True,
+    ) -> HTMLResponse:
+        db.initialise(default_db_path())
+        with db.connect(default_db_path()) as conn:
+            listings = db.query_listings(
+                conn,
+                gemeente=gemeente or None,
+                postcode=postcode,
+                prijs_min=prijs_min,
+                prijs_max=prijs_max,
+                slaapkamers_min=slaapkamers_min,
+                epc_label_in=epc or None,
+                type_in=type_ or None,
+                staat_in=staat or None,
+                source_in=bron or None,
+                exclude_user_status=[UserStatus.AFGEWEZEN.value] if verberg_afgewezen else None,
+                limit=2000,
+            )
+        # Drop entries without coordinates — they can't be pinned.
+        with_geo = [
+            {
+                "id": str(listing.id),
+                "lat": listing.lat,
+                "lng": listing.lng,
+                "postcode": listing.postcode,
+                "gemeente": listing.gemeente,
+                "straat": listing.straat,
+                "titel": listing.titel,
+                "prijs_eur": listing.prijs_eur,
+                "epc_label": listing.epc_label.value if listing.epc_label else None,
+                "type": listing.type.value,
+                "user_status": listing.user_status.value,
+                "source_url": str(listing.sources[0].source_url) if listing.sources else "",
+                "source_name": listing.sources[0].source_name.value if listing.sources else "",
+            }
+            for listing in listings
+            if listing.lat is not None and listing.lng is not None
+        ]
+        return _TEMPLATES.TemplateResponse(
+            request=request,
+            name="map.html",
+            context={
+                "version": __version__,
+                "pins": with_geo,
+                "total_count": len(listings),
+                "geo_count": len(with_geo),
+            },
+        )
+
     @app.post("/refresh")
     def refresh(
         source: Annotated[str | None, Form()] = None,

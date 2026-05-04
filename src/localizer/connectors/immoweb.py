@@ -116,6 +116,17 @@ class ImmowebConnector:
         straat_pieces = [p for p in (street, house_number) if p]
         straat = " ".join(str(p).strip() for p in straat_pieces).strip() or None
 
+        # Geo: Immoweb stores lat/lng on the classified.location block
+        location = classified.get("location") or {}
+        try:
+            lat = float(location["latitude"]) if location.get("latitude") is not None else None
+        except (TypeError, ValueError):
+            lat = None
+        try:
+            lng = float(location["longitude"]) if location.get("longitude") is not None else None
+        except (TypeError, ValueError):
+            lng = None
+
         opp = _coerce_int(classified.get("habitableSurface") or classified.get("livingArea"))
         slaapkamers = _coerce_int(classified.get("bedrooms") or classified.get("bedroomCount"))
         prijs = _coerce_int(price.get("mainValue") or price.get("amount") or price.get("value"))
@@ -173,6 +184,8 @@ class ImmowebConnector:
                 "postcode": postcode,
                 "gemeente": gemeente,
                 "straat": straat,
+                "lat": lat,
+                "lng": lng,
                 "prijs_eur": prijs,
                 "type": prop_type,
                 "oppervlakte_bewoonbaar_m2": opp,

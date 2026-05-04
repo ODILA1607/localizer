@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Localizer · Kaart{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+
+<div class="map-meta">
+  {{ geo_count }} pin(s) op de kaart · {{ total_count }} listing(s) in totaal
+  {% if total_count > geo_count %}
+    <span class="muted">({{ total_count - geo_count }} zonder coördinaten)</span>
+  {% endif %}
+</div>
+
+<div id="map" style="height: calc(100vh - 110px); border: 1px solid #d1d9e0; border-radius: 6px;"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script id="pins-data" type="application/json">{{ pins | tojson }}</script>
+<script>
+(function () {
+  const pins = JSON.parse(document.getElementById('pins-data').textContent);
+
+  // Centre roughly on West-/Oost-Vlaanderen.
+  const map = L.map('map').setView([51.05, 3.6], 9);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap',
+  }).addTo(map);
+
+  const sourceColours = {
+    immoscoop: '#0969da',
+    immovlan:  '#b86b0c',
+    zimmo:     '#8250df',
+    immoweb:   '#cf222e',
+  };
+
+  function priceLabel(eur) {
+    if (eur == null) return 'prijs onbekend';
+    return '€ ' + eur.toLocaleString('nl-BE').replace(/,/g, '.');
+  }
+
+  const markers = [];
+  pins.forEach(p => {
+    const colour = sourceColours[p.source_name] || '#1f2328';
+    const marker = L.circleMarker([p.lat, p.lng], {
+      radius: 7,
+      color: colour,
+      weight: 2,
+      fillColor: colour,
+      fillOpacity: 0.65,
+    });
+    const popup = `
+      <strong>${p.postcode} ${escapeHtml(p.gemeente)}</strong>
+      ${p.straat ? `<br><span style="color:#6e7781">${escapeHtml(p.straat)}</span>` : ''}
+      ${p.titel ? `<br>${escapeHtml(p.titel)}` : ''}
+      <br><strong>${priceLabel(p.prijs_eur)}</strong>
+      ${p.epc_label ? ` · EPC ${escapeHtml(p.epc_label)}` : ''}
+      <br><a href="${p.source_url}" target="_blank" rel="noopener">Open op ${escapeHtml(p.source_name)} ↗</a>
+    `;
+    marker.bindPopup(popup);
+    marker.addTo(map);
+    markers.push(marker);
+  });
+
+  if (markers.length > 0) {
+    const group = L.featureGroup(markers);
+    map.fitBounds(group.getBounds().pad(0.1));
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+})();
+</script>
+{% endblock %}

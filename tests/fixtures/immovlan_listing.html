@@ -1,45 +1,49 @@
 <!DOCTYPE html>
 <!--
-  Synthetic fixture, not a real Immovlan page. Modelled on the Schema.org
-  JSON-LD shape Immovlan currently emits. Will be replaced by a saved
-  real-world page in M3.
+  Synthetic Immovlan fixture mirroring the real layout (verified
+  2026-05-04): JSON-LD has separate PostalAddress + GeoCoordinates +
+  House blocks; price + surface + bedrooms live in the
+  twitter:description meta tag (Immovlan's signature pattern).
 -->
 <html lang="nl">
 <head>
   <meta charset="utf-8" />
   <title>Halfopen woning in Brugge - Immovlan</title>
+  <meta property="og:title" content="Huis te koop in Maria-Theresiastraat 8 Brugge (VBE12345)" />
+  <meta property="og:image" content="https://api-image.immovlan.be/v1/property/VBE12345/cover.jpg" />
+  <meta property="og:description" content="🏡 | Huis te koop | Maria-Theresiastraat 8 - 8000 Brugge | Bewoonbare opp. 175m² | 4 Slaapkamers" />
+  <meta name="twitter:description" content="Huis te koop | Maria-Theresiastraat 8 - 8000 Brugge | 415 000 € | Bewoonbare opp. 175m² | 4 Slaapkamers | 1 Badkamer" />
+  <script type="application/ld+json">
+  {"@context": "https://schema.org", "@type": "Organization", "name": "Immovlan"}
+  </script>
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "Residence",
-    "name": "Halfopen woning met tuin",
-    "description": "Volledig instapklaar gerenoveerde woning op rustige locatie.",
-    "url": "https://immovlan.be/nl/detail/huis/te-koop/8000/brugge/vbe12345",
-    "address": {
-      "@type": "PostalAddress",
-      "streetAddress": "Maria-Theresiastraat 8",
-      "postalCode": "8000",
-      "addressLocality": "Brugge",
-      "addressCountry": "BE"
-    },
-    "image": "https://images.immovlan.be/listings/8675309/hero.jpg",
-    "offers": {
-      "@type": "Offer",
-      "price": 415000,
-      "priceCurrency": "EUR"
-    },
-    "numberOfRooms": 4,
-    "floorSize": {
-      "@type": "QuantitativeValue",
-      "value": 175,
-      "unitCode": "MTK"
-    },
-    "energyEfficiencyScaleMin": "C",
-    "energyConsumption": 210
+    "@type": "PostalAddress",
+    "streetAddress": "Maria-Theresiastraat 8",
+    "postalCode": "8000",
+    "addressLocality": "Brugge",
+    "addressCountry": "BE"
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "GeoCoordinates",
+    "postalCode": "8000",
+    "latitude": 51.2093,
+    "longitude": 3.2247
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "House",
+    "description": "Volledig instapklaar gerenoveerde woning op rustige locatie. EPC-label C, 210 kWh/m²/jaar."
   }
   </script>
 </head>
 <body>
-  <h1>Halfopen bebouwing met tuin</h1>
+  <h1>Halfopen woning met tuin</h1>
 </body>
 </html>
