@@ -47,8 +47,9 @@ log = logging.getLogger(__name__)
 
 # Listing detail URL:
 #   /nl/detail/{type}/te-koop/{postcode}/{city}/{alphanum-id}
+# Group 1 = postcode, group 2 = city slug, group 3 = source_id.
 _LISTING_URL = re.compile(
-    r"/nl/detail/[^/]+/te-koop/(\d{4})/[^/]+/([a-z0-9]+)/?$",
+    r"/nl/detail/[^/]+/te-koop/(\d{4})/([^/]+)/([a-z0-9]+)/?$",
     re.IGNORECASE,
 )
 _SUB_SITEMAP = re.compile(r"/nl_property-detail-\d+\.xml$")
@@ -90,6 +91,20 @@ class ImmovlanConnector:
                     continue
                 seen.add(url)
                 yield ListingRef(url=url)
+        # END for sub_url
+
+    @staticmethod
+    def _location_from_url(url: str) -> tuple[int, str, str] | None:
+        """(postcode, city, source_id) from a listing URL, or None if the
+        URL does not match the expected pattern.
+
+        Immovlan's JSON-LD often omits address.postalCode, so the URL is
+        the authoritative source for location.
+        """
+        m = _LISTING_URL.search(url)
+        if m is None:
+            return None
+        return int(m.group(1)), m.group(2).replace("-", " ").title(), m.group(3)
 
     def fetch(self, client: HTTPClient, ref: ListingRef) -> RawListing:
         return client.get(ref.url)
@@ -106,19 +121,26 @@ class ImmovlanConnector:
         if residence is None:
             raise ValueError("No Residence-like JSON-LD block found in Immovlan HTML.")
 
+        # URL is authoritative for location + id on Immovlan: their
+        # JSON-LD omits address.postalCode and addressLocality is sparse.
+        source_url = residence.get("url") or raw.source_url
+        loc = self._location_from_url(str(source_url))
+        if loc is None:
+            raise ValueError(f"Cannot parse Immovlan URL: {source_url}")
+        postcode, gemeente, source_id = loc
+
+        # Optional fields fall back to JSON-LD where available.
         address = residence.get("address") or {}
+        if isinstance(address, dict):
+            jsonld_locality = (address.get("addressLocality") or "").strip()
+            if jsonld_locality:
+                gemeente = jsonld_locality
+            straat = (address.get("streetAddress") or "").strip() or None
+        else:
+            straat = None
+
         offers = residence.get("offers") or {}
         floor_size = residence.get("floorSize") or {}
-
-        postcode = _coerce_int(address.get("postalCode"))
-        if postcode is None:
-            raise ValueError("Immovlan listing has no postalCode")
-
-        gemeente = (address.get("addressLocality") or "").strip()
-        if not gemeente:
-            raise ValueError("Immovlan listing has no addressLocality")
-
-        straat = (address.get("streetAddress") or "").strip() or None
         opp = _coerce_int(floor_size.get("value"))
         slaapkamers = _coerce_int(residence.get("numberOfRooms"))
         prijs = _coerce_int(offers.get("price"))
@@ -127,12 +149,6 @@ class ImmovlanConnector:
         staat = _classify_condition(residence.get("description") or residence.get("name"))
         epc = _classify_epc(residence.get("energyEfficiencyScaleMin"))
         epc_kwh = _coerce_int(residence.get("energyConsumption"))
-
-        source_url = residence.get("url") or raw.source_url
-        m = _LISTING_URL.search(str(source_url))
-        if m is None:
-            raise ValueError(f"Cannot extract Immovlan source_id from URL: {source_url}")
-        source_id = m.group(2)
 
         image = residence.get("image")
         if isinstance(image, list):
