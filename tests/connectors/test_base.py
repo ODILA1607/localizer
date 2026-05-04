@@ -52,10 +52,11 @@ def test_rate_limiter_set_rate_overrides_default() -> None:
     assert elapsed < 0.2
 
 
-def test_registry_lists_three_connectors() -> None:
+def test_registry_lists_all_four_connectors() -> None:
     assert set(ALL_CONNECTORS.keys()) == {
         SourceName.ZIMMO,
         SourceName.IMMOSCOOP,
+        SourceName.IMMOVLAN,
         SourceName.IMMOWEB,
     }
 

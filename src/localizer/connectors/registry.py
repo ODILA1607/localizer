@@ -15,6 +15,7 @@ from collections.abc import Callable
 
 from localizer.connectors.base import Connector
 from localizer.connectors.immoscoop import ImmoscoopConnector
+from localizer.connectors.immovlan import ImmovlanConnector
 from localizer.connectors.immoweb import ImmowebConnector
 from localizer.connectors.zimmo import ZimmoConnector
 from localizer.core.models import SourceName
@@ -25,12 +26,14 @@ ConnectorFactory = Callable[[], Connector]
 ALL_CONNECTORS: dict[SourceName, ConnectorFactory] = {
     SourceName.ZIMMO: ZimmoConnector,
     SourceName.IMMOSCOOP: ImmoscoopConnector,
+    SourceName.IMMOVLAN: ImmovlanConnector,
     SourceName.IMMOWEB: ImmowebConnector,
 }
 
 
-# Default enabled set — Zimmo is the V1 pilot; Immoscoop joins in week 2;
-# Immoweb stays opt-in until the Cloudflare-bypass connector is finished.
+# Default enabled set — Zimmo is the V1 pilot; Immoscoop and Immovlan
+# join once their live discover() is validated; Immoweb stays opt-in
+# until the Cloudflare-bypass connector is finished.
 DEFAULT_ENABLED: frozenset[SourceName] = frozenset({SourceName.ZIMMO})
 
 

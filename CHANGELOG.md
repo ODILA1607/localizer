@@ -4,6 +4,13 @@ All notable changes to Localizer.
 
 ## [Unreleased]
 
+### Immovlan added (Thomas confirmed source list)
+- Thomas confirmed the V1 source list: Immoweb, Zimmo, Immovlan, Immoscoop.
+- Added `SourceName.IMMOVLAN`, `ImmovlanConnector`, fixture, 3 tests.
+- Same JSON-LD pattern as Zimmo / Immoscoop, sitemap-driven discovery.
+- Registered in `ALL_CONNECTORS`; not in `DEFAULT_ENABLED` until live
+  discover() validated.
+
 ### M3 — runner + CLI + live Zimmo
 - `core/dedup.py`: `merge_or_insert()` — inserts a new canonical listing
   or merges a candidate into the existing one with the same fingerprint.

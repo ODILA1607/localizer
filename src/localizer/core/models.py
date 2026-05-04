@@ -28,6 +28,7 @@ class SourceName(enum.StrEnum):
     IMMOWEB = "immoweb"
     ZIMMO = "zimmo"
     IMMOSCOOP = "immoscoop"
+    IMMOVLAN = "immovlan"
 
 
 class ListingStatus(enum.StrEnum):
