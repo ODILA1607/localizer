@@ -25,6 +25,14 @@ from localizer.core.runner import RefreshResult, run_refresh
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser.
+
+    The `-v`/`--verbose` flag is accepted both before and after the
+    subcommand (`localizer -v refresh` and `localizer refresh -v` both
+    work). To pull this off we declare the flag on every parser, but use
+    `argparse.SUPPRESS` as the subparser default so it never overwrites
+    a count already accumulated at root level.
+    """
     parser = argparse.ArgumentParser(
         prog="localizer",
         description="Aggregate Belgian real-estate listings into one local app.",
@@ -35,6 +43,13 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="cmd")
 
     refresh = sub.add_parser("refresh", help="Run a refresh against enabled sources.")
+    refresh.add_argument(
+        "--verbose",
+        "-v",
+        action="count",
+        default=argparse.SUPPRESS,
+        help="-v info, -vv debug (works before or after the subcommand).",
+    )
     refresh.add_argument(
         "--source",
         choices=[s.value for s in all_connector_names()],
