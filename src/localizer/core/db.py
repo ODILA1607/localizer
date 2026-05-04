@@ -89,6 +89,11 @@ CREATE TABLE IF NOT EXISTS listing_source (
 );
 
 CREATE INDEX IF NOT EXISTS ix_listing_source_listing_id ON listing_source (listing_id);
+
+CREATE TABLE IF NOT EXISTS app_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 
@@ -191,6 +196,118 @@ def mark_source_gone(conn: sqlite3.Connection, source: SourceName, source_id: st
         "UPDATE listing_source SET status = ? WHERE source_name = ? AND source_id = ?",
         (ListingStatus.GONE.value, source.value, source_id),
     )
+
+
+# ---------------------------------------------------------------------------
+# UI-side helpers: filtered query, status update, app-meta
+# ---------------------------------------------------------------------------
+def query_listings(
+    conn: sqlite3.Connection,
+    *,
+    gemeente: str | None = None,
+    postcode: int | None = None,
+    prijs_min: int | None = None,
+    prijs_max: int | None = None,
+    slaapkamers_min: int | None = None,
+    opp_min: int | None = None,
+    epc_label_in: list[str] | None = None,
+    type_in: list[str] | None = None,
+    staat_in: list[str] | None = None,
+    user_status_in: list[str] | None = None,
+    exclude_user_status: list[str] | None = None,
+    source_in: list[str] | None = None,
+    text: str | None = None,
+    limit: int | None = None,
+) -> list[Listing]:
+    """Filtered listing query. Empty filter args mean 'no constraint'."""
+    where: list[str] = []
+    params: list[object] = []
+
+    if gemeente:
+        where.append("LOWER(gemeente) LIKE ?")
+        params.append(f"%{gemeente.lower()}%")
+    if postcode is not None:
+        where.append("postcode = ?")
+        params.append(postcode)
+    if prijs_min is not None:
+        where.append("prijs_eur >= ?")
+        params.append(prijs_min)
+    if prijs_max is not None:
+        where.append("prijs_eur <= ?")
+        params.append(prijs_max)
+    if slaapkamers_min is not None:
+        where.append("slaapkamers >= ?")
+        params.append(slaapkamers_min)
+    if opp_min is not None:
+        where.append("oppervlakte_bewoonbaar_m2 >= ?")
+        params.append(opp_min)
+    if epc_label_in:
+        placeholders = ",".join("?" for _ in epc_label_in)
+        where.append(f"epc_label IN ({placeholders})")
+        params.extend(epc_label_in)
+    if type_in:
+        placeholders = ",".join("?" for _ in type_in)
+        where.append(f"type IN ({placeholders})")
+        params.extend(type_in)
+    if staat_in:
+        placeholders = ",".join("?" for _ in staat_in)
+        where.append(f"staat IN ({placeholders})")
+        params.extend(staat_in)
+    if user_status_in:
+        placeholders = ",".join("?" for _ in user_status_in)
+        where.append(f"user_status IN ({placeholders})")
+        params.extend(user_status_in)
+    if exclude_user_status:
+        placeholders = ",".join("?" for _ in exclude_user_status)
+        where.append(f"user_status NOT IN ({placeholders})")
+        params.extend(exclude_user_status)
+    if source_in:
+        placeholders = ",".join("?" for _ in source_in)
+        where.append(
+            f"id IN (SELECT listing_id FROM listing_source WHERE source_name IN ({placeholders}))"
+        )
+        params.extend(source_in)
+    if text:
+        where.append("(LOWER(titel) LIKE ? OR LOWER(korte_beschrijving) LIKE ?)")
+        like = f"%{text.lower()}%"
+        params.extend([like, like])
+
+    sql = "SELECT * FROM listing"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY created_at DESC"
+    if limit is not None:
+        sql += f" LIMIT {int(limit)}"
+
+    rows = conn.execute(sql, params).fetchall()
+    return [_row_to_listing(conn, r) for r in rows]
+
+
+def update_user_status(conn: sqlite3.Connection, listing_id: str, status: str) -> None:
+    """Set user_status on a listing (UI marker, not bron-afhankelijk)."""
+    conn.execute(
+        "UPDATE listing SET user_status = ?, updated_at = ? WHERE id = ?",
+        (status, _now_iso(), listing_id),
+    )
+
+
+def get_meta(conn: sqlite3.Connection, key: str) -> str | None:
+    row = conn.execute("SELECT value FROM app_meta WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row is not None else None
+
+
+def set_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        "INSERT INTO app_meta (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
+
+
+def _now_iso() -> str:
+    from datetime import UTC, datetime
+
+    return datetime.now(UTC).isoformat()
 
 
 # ---------------------------------------------------------------------------

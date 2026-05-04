@@ -108,8 +108,10 @@ def run_refresh(
         for connector in connectors:
             log.info("Running connector: %s", connector.name)
             per.append(_run_one(connector, client, conn, postcodes_list, max_per_source))
+        finished = utc_now()
+        db.set_meta(conn, "last_refresh_at", finished.isoformat())
 
-    return RefreshResult(started_at=started, finished_at=utc_now(), per_connector=per)
+    return RefreshResult(started_at=started, finished_at=finished, per_connector=per)
 
 
 def _run_one(

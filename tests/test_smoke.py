@@ -15,14 +15,20 @@ def test_version_is_set() -> None:
     assert localizer.__version__.count(".") == 2  # semver M.m.p
 
 
-def test_cli_with_no_args_prints_version(capsys) -> None:
-    rc = main.cli([])
-    assert rc == 0
-    captured = capsys.readouterr()
-    assert "Localizer" in captured.out
+def test_cli_no_args_resolves_to_serve() -> None:
+    """No-args parser-state implies `serve` (cli() body launches the UI)."""
+    args = main._build_parser().parse_args([])
+    assert args.cmd is None  # cli() interprets None as serve
 
 
-def test_cli_help_lists_refresh_subcommand(capsys) -> None:
+def test_cli_serve_subcommand_accepts_port_and_no_browser() -> None:
+    args = main._build_parser().parse_args(["serve", "--port", "9000", "--no-browser"])
+    assert args.cmd == "serve"
+    assert args.port == 9000
+    assert args.no_browser is True
+
+
+def test_cli_help_lists_subcommands(capsys) -> None:
     import pytest
 
     with pytest.raises(SystemExit) as exit_info:
@@ -30,6 +36,7 @@ def test_cli_help_lists_refresh_subcommand(capsys) -> None:
     assert exit_info.value.code == 0
     captured = capsys.readouterr()
     assert "refresh" in captured.out
+    assert "serve" in captured.out
 
 
 def test_cli_verbose_works_before_or_after_subcommand() -> None:

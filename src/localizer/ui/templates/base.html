@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}Localizer{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-left">
+      <strong>Localizer</strong>
+      <span class="muted">v{{ version }}</span>
+      {% if last_refresh %}
+        <span class="muted"> · last refresh: {{ last_refresh.strftime('%Y-%m-%d %H:%M') }}</span>
+      {% endif %}
+      {% if total_count is defined %}
+        <span class="muted"> · {{ total_count }} listings in DB</span>
+      {% endif %}
+    </div>
+    <form action="/refresh" method="post" class="topbar-right">
+      <input type="number" name="limit" placeholder="limit (e.g. 50)" min="1" max="2000">
+      <button type="submit">Refresh now</button>
+    </form>
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

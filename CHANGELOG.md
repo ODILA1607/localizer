@@ -4,6 +4,24 @@ All notable changes to Localizer.
 
 ## [Unreleased]
 
+### M4 — local web UI
+- FastAPI server on 127.0.0.1:8765, server-rendered Jinja templates (no
+  SPA), minimal CSS. Browser opens automatically when Localizer.exe is
+  run with no args.
+- Routes:
+  - `GET /` listings + filters (gemeente, postcode, prijs min/max,
+    slaapkamers min, opp min, EPC labels, type, staat, bron, text
+    search, hide-rejected toggle).
+  - `POST /listings/{id}/status` mark a listing as
+    nieuw/bekeken/interessant/afgewezen.
+  - `POST /refresh` trigger a synchronous refresh from the UI.
+- DB layer extended with `query_listings()`, `update_user_status()`,
+  `app_meta` table for `last_refresh_at`.
+- CLI: `localizer serve [--port N] [--no-browser]`; running with no
+  args defaults to `serve` so Thomas just double-clicks the .exe.
+- 5 new tests (4 UI smoke tests + 2 CLI argument tests).
+- Runtime deps added: fastapi, uvicorn, jinja2, python-multipart.
+
 ### Immovlan added (Thomas confirmed source list)
 - Thomas confirmed the V1 source list: Immoweb, Zimmo, Immovlan, Immoscoop.
 - Added `SourceName.IMMOVLAN`, `ImmovlanConnector`, fixture, 3 tests.

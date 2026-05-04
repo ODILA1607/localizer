@@ -1,8 +1,9 @@
 """Entry point for the Localizer desktop app.
 
 Subcommands:
-    (no args)            - print version, exit. Used for sanity checks.
-    refresh              - run a refresh pass against enabled sources
+    (no args)            - launch the local web UI (default desktop UX)
+    serve                - same as no args; explicit form for scripts
+    refresh              - run a refresh pass on the CLI (no UI)
     refresh --source X   - limit to one source
 """
 
@@ -11,6 +12,8 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import threading
+import webbrowser
 
 from localizer import __version__
 from localizer.connectors.base import HTTPClient
@@ -62,6 +65,10 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="N",
         help="Cap fetched listings per source. Useful for first runs.",
     )
+
+    serve = sub.add_parser("serve", help="Launch the local web UI (default).")
+    serve.add_argument("--port", type=int, default=8765, help="port to bind on 127.0.0.1")
+    serve.add_argument("--no-browser", action="store_true", help="don't open the browser")
 
     return parser
 
@@ -127,6 +134,27 @@ def _do_refresh(source_filter: str | None, limit: int | None) -> int:
     return 0 if result.total_errors == 0 else 2
 
 
+def _do_serve(port: int, open_browser: bool) -> int:
+    """Boot the local FastAPI app on 127.0.0.1, optionally open the browser."""
+    import uvicorn  # imported lazily so `localizer refresh` doesn't load FastAPI
+
+    print(f"Localizer {__version__}")
+    print(f"Serving at http://127.0.0.1:{port}")
+    print("Ctrl+C to stop.")
+
+    if open_browser:
+        # Delay briefly so uvicorn has time to bind before we open the URL.
+        threading.Timer(0.8, lambda: webbrowser.open(f"http://127.0.0.1:{port}")).start()
+
+    uvicorn.run(
+        "localizer.ui.server:app",
+        host="127.0.0.1",
+        port=port,
+        log_level="warning",
+    )
+    return 0
+
+
 def cli(argv: list[str] | None = None) -> int:
     """Console entry point. Returns process exit code."""
     parser = _build_parser()
@@ -134,12 +162,15 @@ def cli(argv: list[str] | None = None) -> int:
     _configure_logging(args.verbose)
 
     if args.cmd is None:
-        print(f"Localizer {__version__}")
-        print("Run 'localizer refresh' to ingest the latest listings.")
-        return 0
+        # Default: launch the UI. This is what Thomas gets when he runs
+        # Localizer.exe by double-clicking it.
+        return _do_serve(port=8765, open_browser=True)
 
     if args.cmd == "refresh":
         return _do_refresh(args.source, args.limit)
+
+    if args.cmd == "serve":
+        return _do_serve(port=args.port, open_browser=not args.no_browser)
 
     parser.error(f"unknown command: {args.cmd}")
     return 2  # unreachable, parser.error exits

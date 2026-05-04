@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="layout">
+  <aside class="sidebar">
+    <form action="/" method="get">
+      <h3>Filters</h3>
+
+      <label>Tekst
+        <input type="search" name="text" value="{{ filters.text }}" placeholder="titel of beschrijving">
+      </label>
+
+      <label>Gemeente
+        <input type="text" name="gemeente" value="{{ filters.gemeente }}" placeholder="bv. Kortrijk">
+      </label>
+
+      <label>Postcode
+        <input type="number" name="postcode" value="{{ filters.postcode if filters.postcode is not none else '' }}" min="1000" max="9999">
+      </label>
+
+      <fieldset>
+        <legend>Prijs (€)</legend>
+        <input type="number" name="prijs_min" value="{{ filters.prijs_min if filters.prijs_min is not none else '' }}" placeholder="min">
+        <input type="number" name="prijs_max" value="{{ filters.prijs_max if filters.prijs_max is not none else '' }}" placeholder="max">
+      </fieldset>
+
+      <label>Min. slaapkamers
+        <input type="number" name="slaapkamers_min" value="{{ filters.slaapkamers_min if filters.slaapkamers_min is not none else '' }}" min="0">
+      </label>
+
+      <label>Min. oppervlakte (m²)
+        <input type="number" name="opp_min" value="{{ filters.opp_min if filters.opp_min is not none else '' }}" min="0">
+      </label>
+
+      <fieldset>
+        <legend>EPC-label</legend>
+        {% for v in options.epc %}
+          <label class="chip">
+            <input type="checkbox" name="epc" value="{{ v }}" {% if v in filters.epc %}checked{% endif %}>
+            {{ v }}
+          </label>
+        {% endfor %}
+      </fieldset>
+
+      <fieldset>
+        <legend>Type</legend>
+        {% for v in options.type %}
+          <label class="chip">
+            <input type="checkbox" name="type" value="{{ v }}" {% if v in filters.type %}checked{% endif %}>
+            {{ v }}
+          </label>
+        {% endfor %}
+      </fieldset>
+
+      <fieldset>
+        <legend>Staat</legend>
+        {% for v in options.staat %}
+          <label class="chip">
+            <input type="checkbox" name="staat" value="{{ v }}" {% if v in filters.staat %}checked{% endif %}>
+            {{ v }}
+          </label>
+        {% endfor %}
+      </fieldset>
+
+      <fieldset>
+        <legend>Bron</legend>
+        {% for v in options.bron %}
+          <label class="chip">
+            <input type="checkbox" name="bron" value="{{ v }}" {% if v in filters.bron %}checked{% endif %}>
+            {{ v }}
+          </label>
+        {% endfor %}
+      </fieldset>
+
+      <label class="inline">
+        <input type="checkbox" name="verberg_afgewezen" value="true" {% if filters.verberg_afgewezen %}checked{% endif %}>
+        Verberg afgewezen
+      </label>
+
+      <div class="actions">
+        <button type="submit">Toepassen</button>
+        <a href="/" class="reset">Reset</a>
+      </div>
+    </form>
+  </aside>
+
+  <section class="results">
+    <p class="result-count">{{ listings|length }} listing(s)</p>
+    {% if not listings %}
+      <p class="empty">Geen listings gevonden. Pas de filters aan, of klik <em>Refresh now</em> bovenaan.</p>
+    {% endif %}
+
+    {% for l in listings %}
+      <article class="listing user-{{ l.user_status.value }}">
+        <header class="row">
+          <div class="loc">
+            <strong>{{ l.postcode }} {{ l.gemeente }}</strong>
+            {% if l.straat %}<span class="muted">· {{ l.straat }}</span>{% endif %}
+          </div>
+          <div class="prijs">
+            {% if l.prijs_eur %}€&nbsp;{{ '{:,}'.format(l.prijs_eur).replace(',', '.') }}{% else %}<span class="muted">prijs onbekend</span>{% endif %}
+          </div>
+        </header>
+
+        {% if l.titel %}<p class="titel">{{ l.titel }}</p>{% endif %}
+
+        <ul class="facts">
+          <li><span class="k">Type</span> {{ l.type.value }}</li>
+          <li><span class="k">Staat</span> {{ l.staat.value if l.staat else '—' }}</li>
+          <li><span class="k">Slaapk.</span> {{ l.slaapkamers if l.slaapkamers is not none else '—' }}</li>
+          <li><span class="k">Opp.</span> {{ l.oppervlakte_bewoonbaar_m2 ~ ' m²' if l.oppervlakte_bewoonbaar_m2 else '—' }}</li>
+          <li><span class="k">EPC</span> {{ l.epc_label.value if l.epc_label else '—' }}{% if l.epc_kwh %} · {{ l.epc_kwh }} kWh{% endif %}</li>
+        </ul>
+
+        <footer class="row">
+          <div class="sources">
+            {% for s in l.sources %}
+              <a href="{{ s.source_url }}" target="_blank" rel="noopener" class="source-link source-{{ s.source_name.value }}">
+                {{ s.source_name.value }} ↗
+              </a>
+            {% endfor %}
+          </div>
+          <form action="/listings/{{ l.id }}/status" method="post" class="status-form">
+            <input type="hidden" name="next" value="{{ request.url }}">
+            {% for v in options.user_status %}
+              <button type="submit" name="status" value="{{ v }}"
+                      class="status-btn {% if l.user_status.value == v %}active{% endif %}">
+                {{ v }}
+              </button>
+            {% endfor %}
+          </form>
+        </footer>
+      </article>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}
