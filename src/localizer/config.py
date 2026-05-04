@@ -35,7 +35,7 @@ def is_in_scope(postcode: int) -> bool:
 # `ROBOTS_USER_AGENT` is *only* used to evaluate robots.txt rules, not
 # sent over the wire. "*" picks the catch-all rule set, which is the
 # right thing for a desktop tool that is not registered as a named bot.
-HTTP_IMPERSONATE = "chrome120"
+HTTP_IMPERSONATE = "chrome131"
 ROBOTS_USER_AGENT = "*"
 OPERATOR_CONTACT = "info@odila.be"
 DEFAULT_RATE_LIMIT_PER_MIN = 30

@@ -215,18 +215,45 @@ class HTTPClient:
                 "Accept-Language": "nl-BE,nl;q=0.9,en;q=0.7",
             }
         )
+        # Cloudflare often gates the very first request to a host with a
+        # bot-management cookie (`__cf_bm`, `cf_clearance`). Pre-fetch
+        # the homepage once per host so that cookie is in our jar before
+        # we ask for `/robots.txt` or `/sitemap.xml`.
+        self._warmed_hosts: set[str] = set()
 
     @property
     def rate_limiter(self) -> RateLimiter:
         return self._rate_limiter
 
+    def _ensure_warmed(self, host: str, scheme: str) -> None:
+        """Hit the homepage once per host to harvest Cloudflare cookies."""
+        if host in self._warmed_hosts:
+            return
+        self._warmed_hosts.add(host)  # mark first to avoid re-trying on failure
+        homepage = f"{scheme}://{host}/"
+        try:
+            log.info("Warming up cookies for %s", host)
+            self._rate_limiter.acquire(host)
+            response = self._client.get(homepage, allow_redirects=True)
+            log.debug(
+                "Warmup %s: status=%s cookies=%d",
+                homepage,
+                response.status_code,
+                len(self._client.cookies),
+            )
+        except Exception as exc:
+            log.debug("Warmup for %s failed: %s — continuing", host, exc)
+
     def get(self, url: str) -> RawListing:
         """Fetch `url`, honouring robots.txt + per-host rate limit."""
         parsed = urlparse(url)
+        host = parsed.netloc
+        self._ensure_warmed(host, parsed.scheme)
+
         if not self._robots.can_fetch(url, fetch_robots=self._client):
             raise RobotsBlockedError(url)
 
-        self._rate_limiter.acquire(parsed.netloc)
+        self._rate_limiter.acquire(host)
         log.debug("GET %s", url)
         response = self._client.get(url, allow_redirects=True)
         response.raise_for_status()  # type: ignore[no-untyped-call]
