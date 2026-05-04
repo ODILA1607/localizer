@@ -110,6 +110,8 @@ def _merge_source_lists(
 
 _PREFER_NEW_IF_EXISTING_NULL = (
     "straat",
+    "lat",
+    "lng",
     "prijs_eur",
     "oppervlakte_bewoonbaar_m2",
     "slaapkamers",

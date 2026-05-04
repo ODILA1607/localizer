@@ -31,18 +31,32 @@ def main() -> None:
         """
         SELECT
             l.id, l.fingerprint, l.postcode, l.gemeente, l.straat,
+            l.lat, l.lng,
             l.oppervlakte_bewoonbaar_m2 AS opp,
             l.slaapkamers AS bed,
             l.prijs_eur AS prijs,
+            l.epc_label,
             l.titel
         FROM listing l
         ORDER BY l.fingerprint
         """
     ).fetchall()
 
+    # Field-coverage summary first — quick health check.
     print(f"Database: {path}")
     print(f"Total canonical listings: {len(listings)}\n")
-    print("=" * 100)
+    counts = {
+        "with lat/lng": sum(1 for r in listings if r["lat"] is not None and r["lng"] is not None),
+        "with prijs": sum(1 for r in listings if r["prijs"] is not None),
+        "with opp": sum(1 for r in listings if r["opp"] is not None),
+        "with slaapk": sum(1 for r in listings if r["bed"] is not None),
+        "with EPC": sum(1 for r in listings if r["epc_label"]),
+        "with straat": sum(1 for r in listings if r["straat"]),
+    }
+    for label, n in counts.items():
+        print(f"  {label:<14} {n}/{len(listings)}")
+
+    print("\n" + "=" * 100)
 
     for row in listings:
         srcs = conn.execute(
