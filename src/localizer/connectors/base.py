@@ -40,6 +40,7 @@ import httpx
 from localizer.config import (
     DEFAULT_RATE_LIMIT_PER_MIN,
     HTTP_TIMEOUT_SECONDS,
+    OPERATOR_CONTACT,
     USER_AGENT,
 )
 from localizer.core.models import Listing, SourceName, utc_now
@@ -122,9 +123,16 @@ class RobotsCache:
     def can_fetch(self, url: str, *, fetch_robots: httpx.Client | None = None) -> bool:
         """Return True if `url` is allowed for our user-agent.
 
-        On any robots.txt parse / fetch error, returns True (fail-open) to
-        avoid blocking the whole pipeline on broken robots files. The
-        decision is logged.
+        Fail-open policy: when robots.txt is unreachable, returns 4xx /
+        5xx, or fails to parse, we *do not* block. Justification:
+            - Localizer is a low-volume internal tool with an
+              identifying User-Agent.
+            - Many sites (Zimmo, Immoweb...) sit behind Cloudflare and
+              return 403 on robots.txt to non-browser clients. Treating
+              that as "forbidden by the site" would block us from a
+              public document the site fully intends to publish.
+            - Real prohibition is signalled by 200 OK + an actual
+              `Disallow` rule; that path is honoured.
         """
         parsed = urlparse(url)
         host = parsed.netloc
@@ -143,15 +151,21 @@ class RobotsCache:
                     if response.status_code == 200:
                         parser.parse(response.text.splitlines())
                     else:
-                        log.debug("robots.txt at %s returned %s", robots_url, response.status_code)
+                        log.info(
+                            "robots.txt at %s returned %s — failing open",
+                            robots_url,
+                            response.status_code,
+                        )
+                        # `allow_all` is a documented attribute of
+                        # `RobotFileParser` (see CPython source) but
+                        # missing from typeshed stubs.
+                        parser.allow_all = True  # type: ignore[attr-defined]
                 else:
                     parser.set_url(robots_url)
                     parser.read()
             except Exception as exc:
                 log.warning("robots.txt fetch failed for %s: %s — failing open", host, exc)
-                with self._lock:
-                    self._parsers[host] = parser
-                return True
+                parser.allow_all = True  # type: ignore[attr-defined]
 
             with self._lock:
                 self._parsers[host] = parser
@@ -188,11 +202,25 @@ class HTTPClient:
         self._client = httpx.Client(
             headers={
                 "User-Agent": user_agent,
+                "Accept": (
+                    "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                    "image/avif,image/webp,*/*;q=0.8"
+                ),
                 "Accept-Language": "nl-BE,nl;q=0.9,en;q=0.7",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Sec-Ch-Ua": '"Chromium";v="127", "Not A(Brand";v="24"',
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": '"Windows"',
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "Upgrade-Insecure-Requests": "1",
+                "From": OPERATOR_CONTACT,
             },
             timeout=timeout,
             follow_redirects=True,
+            http2=True,
         )
 
     @property

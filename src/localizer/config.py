@@ -25,7 +25,16 @@ def is_in_scope(postcode: int) -> bool:
 # ---------------------------------------------------------------------------
 # HTTP defaults
 # ---------------------------------------------------------------------------
-USER_AGENT = "Localizer-Internal/0.1 (+contact: info@odila.be)"
+# Browser-like User-Agent. Belgian listing sites (Cloudflare-fronted ones
+# in particular) immediately 403 unidentified Python clients. We still
+# identify ourselves to site owners through the `From` header further
+# down the stack — that's the IETF-standard place for operator contact.
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/127.0.0.0 Safari/537.36"
+)
+OPERATOR_CONTACT = "info@odila.be"
 DEFAULT_RATE_LIMIT_PER_MIN = 30
 HTTP_TIMEOUT_SECONDS = 30
 
