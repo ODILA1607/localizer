@@ -31,10 +31,13 @@ ALL_CONNECTORS: dict[SourceName, ConnectorFactory] = {
 }
 
 
-# Default enabled set — Zimmo is the V1 pilot; Immoscoop and Immovlan
-# join once their live discover() is validated; Immoweb stays opt-in
-# until the Cloudflare-bypass connector is finished.
-DEFAULT_ENABLED: frozenset[SourceName] = frozenset({SourceName.ZIMMO})
+# Default enabled set — Immoscoop and Immovlan are reachable with
+# curl_cffi's Chrome impersonation (verified via probe). Zimmo and
+# Immoweb sit behind Cloudflare's JS-challenge and are deferred to
+# V1.1 (Playwright fallback or paid scraping API decision). They
+# remain selectable explicitly via `--source zimmo`/`--source immoweb`
+# once that escalation lands.
+DEFAULT_ENABLED: frozenset[SourceName] = frozenset({SourceName.IMMOSCOOP, SourceName.IMMOVLAN})
 
 
 def enabled_connectors(

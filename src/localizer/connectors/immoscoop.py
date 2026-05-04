@@ -1,14 +1,13 @@
-"""Immoscoop connector — second source (week 2).
+"""Immoscoop connector — V1 active source.
 
-Strategy: bot-protection laag 1 (realistic headers + cookies) with
-fallback to laag 3 (internal JSON endpoint) if needed. Currently parses
-JSON-LD `Residence` blocks just like Zimmo.
-
-discover() and fetch() land in M3 once we go live against the real site.
+Strategy: bot-protection laag 1 (curl_cffi Chrome impersonation suffices
+— Immoscoop returns 200 to chrome131). Sitemap-driven discovery, parses
+JSON-LD `Residence` / `Apartment` / `House` blocks.
 """
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Iterable
 from typing import ClassVar
@@ -25,6 +24,9 @@ from localizer.connectors.zimmo import (
     _classify_epc,
     _classify_property_type,
     _coerce_int,
+    _iter_sitemap_locs,
+    _looks_like_listing_url,
+    _postcode_from_url,
 )
 from localizer.core.dedup import compute_fingerprint
 from localizer.core.models import (
@@ -33,7 +35,17 @@ from localizer.core.models import (
     SourceName,
 )
 
+log = logging.getLogger(__name__)
+
 _SOURCE_ID_FROM_URL = re.compile(r"/(\d{6,})(?:[-/]|$)")
+
+
+def _is_listing_sitemap(url: str) -> bool:
+    """Heuristic: which child-sitemap holds for-sale listings on Immoscoop?"""
+    lowered = url.lower()
+    return any(
+        s in lowered for s in ("te-koop", "for-sale", "huis", "appartement", "listing", "detail")
+    )
 
 
 class ImmoscoopConnector:
@@ -42,10 +54,39 @@ class ImmoscoopConnector:
     base_url: ClassVar[str] = "https://www.immoscoop.be"
 
     def discover(self, client: HTTPClient, postcodes: Iterable[int]) -> Iterable[ListingRef]:
-        raise NotImplementedError("Immoscoop discover() lands in M3.")
+        """Sitemap-driven discovery. Will adjust if real layout differs."""
+        wanted = set(postcodes)
+        seen: set[str] = set()
+        index_url = f"{self.base_url}/sitemap.xml"
+
+        try:
+            index_xml = client.get(index_url).text()
+            sub_sitemaps = list(_iter_sitemap_locs(index_xml))
+        except Exception as exc:  # pragma: no cover - live path
+            log.warning("Immoscoop: sitemap index unreachable (%s)", exc)
+            sub_sitemaps = []
+
+        listing_sitemaps = [u for u in sub_sitemaps if _is_listing_sitemap(u)] or sub_sitemaps
+
+        for sitemap_url in listing_sitemaps:
+            try:
+                sitemap_xml = client.get(sitemap_url).text()
+            except Exception as exc:  # pragma: no cover - live path
+                log.warning("Immoscoop: sitemap %s failed: %s", sitemap_url, exc)
+                continue
+            for url in _iter_sitemap_locs(sitemap_xml):
+                if url in seen:
+                    continue
+                pc = _postcode_from_url(url)
+                if pc is None or pc not in wanted:
+                    continue
+                if not _looks_like_listing_url(url):
+                    continue
+                seen.add(url)
+                yield ListingRef(url=url)
 
     def fetch(self, client: HTTPClient, ref: ListingRef) -> RawListing:
-        raise NotImplementedError("Immoscoop fetch() lands in M3.")
+        return client.get(ref.url)
 
     def parse(self, raw: RawListing) -> Listing:
         blocks = extract_json_ld(raw.text())

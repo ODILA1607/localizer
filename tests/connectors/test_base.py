@@ -61,14 +61,17 @@ def test_registry_lists_all_four_connectors() -> None:
     }
 
 
-def test_default_enabled_is_zimmo_only() -> None:
-    assert DEFAULT_ENABLED == frozenset({SourceName.ZIMMO})
+def test_default_enabled_is_immoscoop_and_immovlan() -> None:
+    """Zimmo + Immoweb sit behind Cloudflare JS-challenge (V1.1 work)."""
+    assert DEFAULT_ENABLED == frozenset({SourceName.IMMOSCOOP, SourceName.IMMOVLAN})
 
 
 def test_enabled_connectors_returns_instances() -> None:
     instances = enabled_connectors()
-    assert len(instances) == 1
-    assert instances[0].name is SourceName.ZIMMO
+    assert {c.name for c in instances} == {
+        SourceName.IMMOSCOOP,
+        SourceName.IMMOVLAN,
+    }
 
 
 def test_enabled_connectors_can_be_overridden() -> None:
