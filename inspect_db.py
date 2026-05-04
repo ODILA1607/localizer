@@ -36,6 +36,7 @@ def main() -> None:
             l.slaapkamers AS bed,
             l.prijs_eur AS prijs,
             l.epc_label,
+            l.hoofd_foto_url AS foto,
             l.titel
         FROM listing l
         ORDER BY l.fingerprint
@@ -52,6 +53,7 @@ def main() -> None:
         "with slaapk": sum(1 for r in listings if r["bed"] is not None),
         "with EPC": sum(1 for r in listings if r["epc_label"]),
         "with straat": sum(1 for r in listings if r["straat"]),
+        "with foto": sum(1 for r in listings if r["foto"]),
     }
     for label, n in counts.items():
         print(f"  {label:<14} {n}/{len(listings)}")

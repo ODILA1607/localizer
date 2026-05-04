@@ -92,44 +92,53 @@
 
     {% for l in listings %}
       <article class="listing user-{{ l.user_status.value }}">
-        <header class="row">
-          <div class="loc">
-            <strong>{{ l.postcode }} {{ l.gemeente }}</strong>
-            {% if l.straat %}<span class="muted">· {{ l.straat }}</span>{% endif %}
-          </div>
-          <div class="prijs">
-            {% if l.prijs_eur %}€&nbsp;{{ '{:,}'.format(l.prijs_eur).replace(',', '.') }}{% else %}<span class="muted">prijs onbekend</span>{% endif %}
-          </div>
-        </header>
+        {% if l.hoofd_foto_url %}
+          {% set _open_url = l.sources[0].source_url if l.sources else '#' %}
+          <a href="{{ _open_url }}" target="_blank" rel="noopener" class="foto-link" title="Open op {{ l.sources[0].source_name.value if l.sources else '' }}">
+            <img class="foto" src="{{ l.hoofd_foto_url }}" alt="" loading="lazy"
+                 onerror="this.parentElement.classList.add('foto-broken')">
+          </a>
+        {% endif %}
+        <div class="card-body">
+          <header class="row">
+            <div class="loc">
+              <strong>{{ l.postcode }} {{ l.gemeente }}</strong>
+              {% if l.straat %}<span class="muted">· {{ l.straat }}</span>{% endif %}
+            </div>
+            <div class="prijs">
+              {% if l.prijs_eur %}€&nbsp;{{ '{:,}'.format(l.prijs_eur).replace(',', '.') }}{% else %}<span class="muted">prijs onbekend</span>{% endif %}
+            </div>
+          </header>
 
-        {% if l.titel %}<p class="titel">{{ l.titel }}</p>{% endif %}
+          {% if l.titel %}<p class="titel">{{ l.titel }}</p>{% endif %}
 
-        <ul class="facts">
-          <li><span class="k">Type</span> {{ l.type.value }}</li>
-          <li><span class="k">Staat</span> {{ l.staat.value if l.staat else '—' }}</li>
-          <li><span class="k">Slaapk.</span> {{ l.slaapkamers if l.slaapkamers is not none else '—' }}</li>
-          <li><span class="k">Opp.</span> {{ l.oppervlakte_bewoonbaar_m2 ~ ' m²' if l.oppervlakte_bewoonbaar_m2 else '—' }}</li>
-          <li><span class="k">EPC</span> {{ l.epc_label.value if l.epc_label else '—' }}{% if l.epc_kwh %} · {{ l.epc_kwh }} kWh{% endif %}</li>
-        </ul>
+          <ul class="facts">
+            <li><span class="k">Type</span> {{ l.type.value }}</li>
+            <li><span class="k">Staat</span> {{ l.staat.value if l.staat else '—' }}</li>
+            <li><span class="k">Slaapk.</span> {{ l.slaapkamers if l.slaapkamers is not none else '—' }}</li>
+            <li><span class="k">Opp.</span> {{ l.oppervlakte_bewoonbaar_m2 ~ ' m²' if l.oppervlakte_bewoonbaar_m2 else '—' }}</li>
+            <li><span class="k">EPC</span> {{ l.epc_label.value if l.epc_label else '—' }}{% if l.epc_kwh %} · {{ l.epc_kwh }} kWh{% endif %}</li>
+          </ul>
 
-        <footer class="row">
-          <div class="sources">
-            {% for s in l.sources %}
-              <a href="{{ s.source_url }}" target="_blank" rel="noopener" class="source-link source-{{ s.source_name.value }}">
-                {{ s.source_name.value }} ↗
-              </a>
-            {% endfor %}
-          </div>
-          <form action="/listings/{{ l.id }}/status" method="post" class="status-form">
-            <input type="hidden" name="next" value="{{ request.url }}">
-            {% for v in options.user_status %}
-              <button type="submit" name="status" value="{{ v }}"
-                      class="status-btn {% if l.user_status.value == v %}active{% endif %}">
-                {{ v }}
-              </button>
-            {% endfor %}
-          </form>
-        </footer>
+          <footer class="row">
+            <div class="sources">
+              {% for s in l.sources %}
+                <a href="{{ s.source_url }}" target="_blank" rel="noopener" class="source-link source-{{ s.source_name.value }}">
+                  {{ s.source_name.value }} ↗
+                </a>
+              {% endfor %}
+            </div>
+            <form action="/listings/{{ l.id }}/status" method="post" class="status-form">
+              <input type="hidden" name="next" value="{{ request.url }}">
+              {% for v in options.user_status %}
+                <button type="submit" name="status" value="{{ v }}"
+                        class="status-btn {% if l.user_status.value == v %}active{% endif %}">
+                  {{ v }}
+                </button>
+              {% endfor %}
+            </form>
+          </footer>
+        </div>
       </article>
     {% endfor %}
   </section>

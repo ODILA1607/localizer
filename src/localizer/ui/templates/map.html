@@ -53,6 +53,7 @@
       fillOpacity: 0.65,
     });
     const popup = `
+      ${p.foto ? `<img src="${p.foto}" style="width:240px;height:140px;object-fit:cover;border-radius:4px;margin-bottom:6px;" onerror="this.style.display='none'">` : ''}
       <strong>${p.postcode} ${escapeHtml(p.gemeente)}</strong>
       ${p.straat ? `<br><span style="color:#6e7781">${escapeHtml(p.straat)}</span>` : ''}
       ${p.titel ? `<br>${escapeHtml(p.titel)}` : ''}

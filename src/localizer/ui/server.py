@@ -174,6 +174,7 @@ def create_app() -> FastAPI:
                 "epc_label": listing.epc_label.value if listing.epc_label else None,
                 "type": listing.type.value,
                 "user_status": listing.user_status.value,
+                "foto": str(listing.hoofd_foto_url) if listing.hoofd_foto_url else None,
                 "source_url": str(listing.sources[0].source_url) if listing.sources else "",
                 "source_name": listing.sources[0].source_name.value if listing.sources else "",
             }
