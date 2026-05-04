@@ -55,6 +55,13 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=[s.value for s in all_connector_names()],
         help="Limit to one source (defaults to all enabled).",
     )
+    refresh.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Cap fetched listings per source. Useful for first runs.",
+    )
 
     return parser
 
@@ -91,7 +98,7 @@ def _print_summary(result: RefreshResult) -> None:
     )
 
 
-def _do_refresh(source_filter: str | None) -> int:
+def _do_refresh(source_filter: str | None, limit: int | None) -> int:
     if source_filter is None:
         connectors = enabled_connectors(DEFAULT_ENABLED)
     else:
@@ -104,10 +111,17 @@ def _do_refresh(source_filter: str | None) -> int:
     db_path = default_db_path()
     print(f"Database: {db_path}")
     print(f"Sources:  {', '.join(c.display_name for c in connectors)}")
+    if limit is not None:
+        print(f"Limit:    {limit} listings per source")
     print()
 
     with HTTPClient() as client:
-        result = run_refresh(connectors=connectors, client=client, db_path=db_path)
+        result = run_refresh(
+            connectors=connectors,
+            client=client,
+            db_path=db_path,
+            max_per_source=limit,
+        )
 
     _print_summary(result)
     return 0 if result.total_errors == 0 else 2
@@ -125,7 +139,7 @@ def cli(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "refresh":
-        return _do_refresh(args.source)
+        return _do_refresh(args.source, args.limit)
 
     parser.error(f"unknown command: {args.cmd}")
     return 2  # unreachable, parser.error exits

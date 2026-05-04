@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import logging
 import re
-import xml.etree.ElementTree as ET
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable
 from typing import Any, ClassVar
 
 from localizer.connectors._parsing import extract_json_ld, find_jsonld_by_type
+from localizer.connectors._sitemaps import fetch_sitemap_text, iter_sitemap_locs
 from localizer.connectors.base import (
     Connector,
     HTTPClient,
@@ -34,46 +34,10 @@ from localizer.core.models import (
 
 log = logging.getLogger(__name__)
 
-_SOURCE_ID_FROM_URL = re.compile(r"/(\d{6,})(?:[-/]|$)")
-_POSTCODE_IN_URL = re.compile(r"/(\d{4})-")
-_SITEMAP_NAMESPACE = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
-
-
-def _iter_sitemap_locs(xml_text: str) -> Iterator[str]:
-    """Yield <loc> values from a sitemap or sitemapindex XML document.
-
-    Tolerant: malformed XML logs and yields nothing. Strips whitespace.
-    """
-    try:
-        root = ET.fromstring(xml_text)
-    except ET.ParseError as exc:
-        log.warning("Zimmo: sitemap XML parse failed: %s", exc)
-        return
-    for loc in root.iter(f"{_SITEMAP_NAMESPACE}loc"):
-        text = (loc.text or "").strip()
-        if text:
-            yield text
-
-
-def _is_listing_sitemap(url: str) -> bool:
-    """Heuristic: does this child-sitemap URL look like one with for-sale listings?"""
-    lowered = url.lower()
-    return any(s in lowered for s in ("te-koop", "for-sale", "huis", "appartement", "listing"))
-
-
-def _looks_like_listing_url(url: str) -> bool:
-    """Listing detail pages contain a 6+ digit numeric ID and a postcode segment."""
-    return bool(_SOURCE_ID_FROM_URL.search(url) and _POSTCODE_IN_URL.search(url))
-
-
-def _postcode_from_url(url: str) -> int | None:
-    m = _POSTCODE_IN_URL.search(url)
-    if m is None:
-        return None
-    try:
-        return int(m.group(1))
-    except ValueError:
-        return None
+# Listing detail URL: /nl/{postcode}-{slug}/te-koop/.../{id}-{slug}/
+# Both Zimmo and Immoscoop use the postcode-hyphen-city pattern.
+_LISTING_URL = re.compile(r"/(\d{4})-[a-z0-9-]+/.*?(\d+)(?:-[a-z0-9-]+)?/?$", re.IGNORECASE)
+_SUB_SITEMAP_HINT = re.compile(r"te-koop|for-sale|huis|appartement|listing", re.IGNORECASE)
 
 
 _PROPERTY_TYPE_FROM_TEXT = (
@@ -147,45 +111,37 @@ class ZimmoConnector:
     base_url: ClassVar[str] = "https://www.zimmo.be"
 
     def discover(self, client: HTTPClient, postcodes: Iterable[int]) -> Iterable[ListingRef]:
-        """Sitemap-driven discovery.
-
-        Strategy (best guess, will adjust on first live run):
-            1. GET /sitemap.xml — expect a <sitemapindex>.
-            2. For every child sitemap whose URL hints at "te-koop" / "for-sale"
-               (i.e. listings, not editorial pages), fetch it.
-            3. Each child is a <urlset> of listing-detail URLs. Yield those
-               whose path contains a postcode in `postcodes`.
-
-        Falls back to the explicit search URL on a per-postcode basis if
-        the sitemap is empty or unreachable.
-        """
+        """Sitemap-driven discovery (currently blocked by Cloudflare; V1.1)."""
         wanted = set(postcodes)
         seen: set[str] = set()
         index_url = f"{self.base_url}/sitemap.xml"
 
         try:
-            index_xml = client.get(index_url).text()
-            sub_sitemaps = list(_iter_sitemap_locs(index_xml))
+            index_xml = fetch_sitemap_text(client, index_url)
         except Exception as exc:  # pragma: no cover - live path
-            log.warning("Zimmo: sitemap index unreachable (%s) — falling back to search", exc)
-            sub_sitemaps = []
+            log.warning("Zimmo: sitemap index unreachable: %s", exc)
+            return
 
-        # Filter to listing sitemaps; reality may differ — adjust on first run.
-        listing_sitemaps = [u for u in sub_sitemaps if _is_listing_sitemap(u)] or sub_sitemaps
+        sub_urls = [u for u in iter_sitemap_locs(index_xml) if _SUB_SITEMAP_HINT.search(u)] or list(
+            iter_sitemap_locs(index_xml)
+        )
 
-        for sitemap_url in listing_sitemaps:
+        for sub_url in sub_urls:
             try:
-                sitemap_xml = client.get(sitemap_url).text()
+                sub_text = fetch_sitemap_text(client, sub_url)
             except Exception as exc:  # pragma: no cover - live path
-                log.warning("Zimmo: sitemap %s failed: %s", sitemap_url, exc)
+                log.warning("Zimmo: sub-sitemap %s failed: %s", sub_url, exc)
                 continue
-            for url in _iter_sitemap_locs(sitemap_xml):
+            for url in iter_sitemap_locs(sub_text):
                 if url in seen:
                     continue
-                pc = _postcode_from_url(url)
-                if pc is None or pc not in wanted:
+                if "te-koop" not in url:
                     continue
-                if not _looks_like_listing_url(url):
+                m = _LISTING_URL.search(url)
+                if m is None:
+                    continue
+                pc = int(m.group(1))
+                if pc not in wanted:
                     continue
                 seen.add(url)
                 yield ListingRef(url=url)
@@ -228,10 +184,10 @@ class ZimmoConnector:
         epc_kwh = _coerce_int(residence.get("energyConsumption"))
 
         source_url = residence.get("url") or raw.source_url
-        m = _SOURCE_ID_FROM_URL.search(str(source_url))
+        m = _LISTING_URL.search(str(source_url))
         if m is None:
             raise ValueError(f"Cannot extract Zimmo source_id from URL: {source_url}")
-        source_id = m.group(1)
+        source_id = m.group(2)
 
         image = residence.get("image")
         if isinstance(image, list):

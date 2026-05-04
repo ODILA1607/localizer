@@ -22,7 +22,7 @@ FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 def immoscoop_listing_raw() -> RawListing:
     body = (FIXTURES / "immoscoop_listing.html").read_bytes()
     return RawListing(
-        source_url="https://www.immoscoop.be/nl/te-koop/9000-gent/987654321-modern-appartement",
+        source_url="https://www.immoscoop.be/te-koop/9000-gent/987",
         body=body,
     )
 
@@ -57,7 +57,7 @@ def test_immoscoop_attaches_correct_source(
 ) -> None:
     listing = ImmoscoopConnector().parse(immoscoop_listing_raw)
     assert listing.sources[0].source_name is SourceName.IMMOSCOOP
-    assert listing.sources[0].source_id == "987654321"
+    assert listing.sources[0].source_id == "987"
 
 
 def test_immoscoop_rejects_html_without_jsonld() -> None:

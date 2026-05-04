@@ -26,7 +26,6 @@ from localizer.config import POSTCODE_RANGES
 from localizer.connectors.base import (
     Connector,
     HTTPClient,
-    ListingRef,
     RobotsBlockedError,
 )
 from localizer.core import db, dedup
@@ -92,8 +91,14 @@ def run_refresh(
     client: HTTPClient,
     db_path: Path,
     postcodes: Iterable[int] | None = None,
+    max_per_source: int | None = None,
 ) -> RefreshResult:
-    """Run one refresh pass and return aggregated results."""
+    """Run one refresh pass and return aggregated results.
+
+    `max_per_source` caps the number of listings fetched per connector;
+    useful for the first runs against a fresh DB so we don't burn an hour
+    crawling thousands of pages before knowing the parser works.
+    """
     started = utc_now()
     postcodes_list = list(postcodes) if postcodes is not None else _all_postcodes()
 
@@ -102,7 +107,7 @@ def run_refresh(
     with db.connect(db_path) as conn:
         for connector in connectors:
             log.info("Running connector: %s", connector.name)
-            per.append(_run_one(connector, client, conn, postcodes_list))
+            per.append(_run_one(connector, client, conn, postcodes_list, max_per_source))
 
     return RefreshResult(started_at=started, finished_at=utc_now(), per_connector=per)
 
@@ -112,11 +117,20 @@ def _run_one(
     client: HTTPClient,
     conn: object,  # sqlite3.Connection — typed `object` to avoid Protocol leaks
     postcodes: list[int],
+    max_listings: int | None,
 ) -> ConnectorResult:
     result = ConnectorResult(name=connector.name)
 
     try:
-        refs: list[ListingRef] = list(connector.discover(client, postcodes))
+        refs_iter = iter(connector.discover(client, postcodes))
+        if max_listings is None:
+            refs = list(refs_iter)
+        else:
+            refs = []
+            for ref in refs_iter:
+                refs.append(ref)
+                if len(refs) >= max_listings:
+                    break
     except NotImplementedError:
         result.errors.append("discover() not implemented yet")
         return result

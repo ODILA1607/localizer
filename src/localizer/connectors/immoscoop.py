@@ -1,8 +1,17 @@
 """Immoscoop connector — V1 active source.
 
-Strategy: bot-protection laag 1 (curl_cffi Chrome impersonation suffices
-— Immoscoop returns 200 to chrome131). Sitemap-driven discovery, parses
-JSON-LD `Residence` / `Apartment` / `House` blocks.
+curl_cffi Chrome impersonation suffices (verified via probe). Sitemap
+layout (also verified):
+  - Index at `/sitemap/sitemap.xml`
+  - Listing sub-sitemaps named `sitemap-properties-nl-{N}.xml.gz`
+    (gzipped, ~25k URLs each).
+  - Listing URL format: `https://www.immoscoop.be/te-koop/{postcode}-{slug}/{id}`
+
+We filter to:
+  - sale-only (URL contains `/te-koop/`),
+  - postcode in scope (Belgian 4-digit prefix in path).
+
+Detail pages publish JSON-LD; `parse()` consumes that.
 """
 
 from __future__ import annotations
@@ -13,6 +22,7 @@ from collections.abc import Iterable
 from typing import ClassVar
 
 from localizer.connectors._parsing import extract_json_ld, find_jsonld_by_type
+from localizer.connectors._sitemaps import fetch_sitemap_text, iter_sitemap_locs
 from localizer.connectors.base import (
     Connector,
     HTTPClient,
@@ -24,9 +34,6 @@ from localizer.connectors.zimmo import (
     _classify_epc,
     _classify_property_type,
     _coerce_int,
-    _iter_sitemap_locs,
-    _looks_like_listing_url,
-    _postcode_from_url,
 )
 from localizer.core.dedup import compute_fingerprint
 from localizer.core.models import (
@@ -37,15 +44,9 @@ from localizer.core.models import (
 
 log = logging.getLogger(__name__)
 
-_SOURCE_ID_FROM_URL = re.compile(r"/(\d{6,})(?:[-/]|$)")
-
-
-def _is_listing_sitemap(url: str) -> bool:
-    """Heuristic: which child-sitemap holds for-sale listings on Immoscoop?"""
-    lowered = url.lower()
-    return any(
-        s in lowered for s in ("te-koop", "for-sale", "huis", "appartement", "listing", "detail")
-    )
+# Listing detail URL: e.g. /te-koop/8500-kortrijk/879 → id "879"
+_LISTING_URL = re.compile(r"/te-koop/(\d{4})-[^/]+/(\d+)/?$")
+_SUB_SITEMAP = re.compile(r"/sitemap-properties-nl-\d+\.xml(?:\.gz)?$")
 
 
 class ImmoscoopConnector:
@@ -54,33 +55,33 @@ class ImmoscoopConnector:
     base_url: ClassVar[str] = "https://www.immoscoop.be"
 
     def discover(self, client: HTTPClient, postcodes: Iterable[int]) -> Iterable[ListingRef]:
-        """Sitemap-driven discovery. Will adjust if real layout differs."""
         wanted = set(postcodes)
         seen: set[str] = set()
-        index_url = f"{self.base_url}/sitemap.xml"
+        index_url = f"{self.base_url}/sitemap/sitemap.xml"
 
         try:
-            index_xml = client.get(index_url).text()
-            sub_sitemaps = list(_iter_sitemap_locs(index_xml))
+            index_text = fetch_sitemap_text(client, index_url)
         except Exception as exc:  # pragma: no cover - live path
-            log.warning("Immoscoop: sitemap index unreachable (%s)", exc)
-            sub_sitemaps = []
+            log.warning("Immoscoop: sitemap index unreachable: %s", exc)
+            return
 
-        listing_sitemaps = [u for u in sub_sitemaps if _is_listing_sitemap(u)] or sub_sitemaps
+        sub_urls = [u for u in iter_sitemap_locs(index_text) if _SUB_SITEMAP.search(u)]
+        log.info("Immoscoop: %d listing sub-sitemap(s) to walk", len(sub_urls))
 
-        for sitemap_url in listing_sitemaps:
+        for sub_url in sub_urls:
             try:
-                sitemap_xml = client.get(sitemap_url).text()
+                sub_text = fetch_sitemap_text(client, sub_url)
             except Exception as exc:  # pragma: no cover - live path
-                log.warning("Immoscoop: sitemap %s failed: %s", sitemap_url, exc)
+                log.warning("Immoscoop: sub-sitemap %s failed: %s", sub_url, exc)
                 continue
-            for url in _iter_sitemap_locs(sitemap_xml):
+            for url in iter_sitemap_locs(sub_text):
                 if url in seen:
                     continue
-                pc = _postcode_from_url(url)
-                if pc is None or pc not in wanted:
+                m = _LISTING_URL.search(url)
+                if m is None:
                     continue
-                if not _looks_like_listing_url(url):
+                pc = int(m.group(1))
+                if pc not in wanted:
                     continue
                 seen.add(url)
                 yield ListingRef(url=url)
@@ -122,10 +123,10 @@ class ImmoscoopConnector:
         epc_kwh = _coerce_int(residence.get("energyConsumption"))
 
         source_url = residence.get("url") or raw.source_url
-        m = _SOURCE_ID_FROM_URL.search(str(source_url))
+        m = _LISTING_URL.search(str(source_url))
         if m is None:
             raise ValueError(f"Cannot extract Immoscoop source_id from URL: {source_url}")
-        source_id = m.group(1)
+        source_id = m.group(2)
 
         image = residence.get("image")
         if isinstance(image, list):

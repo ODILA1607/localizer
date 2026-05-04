@@ -1,14 +1,18 @@
-"""Immovlan connector — fourth source confirmed by Thomas.
+"""Immovlan connector — V1 active source.
 
-Strategy: bot-protection laag 1 (realistic headers + cookies). Immovlan
-publishes structured data as JSON-LD (`Residence` / `RealEstateListing`)
-in the listing detail page; `parse()` consumes that. Same pattern as
-Zimmo / Immoscoop, separate connector kept for the registry's sake and
-to allow per-source tuning later (different sitemap layout, different
-field quirks).
+curl_cffi Chrome impersonation suffices (verified via probe). Sitemap
+layout (also verified):
+  - Index at `/sitemap.xml` listing 1043+ sub-sitemaps (most are
+    search-page indexes, not individual listings).
+  - Listing sub-sitemaps named `nl_property-detail-{1..13}.xml` (plain
+    XML, ~2500 URLs each).
+  - Listing URL format:
+      `https://immovlan.be/nl/detail/{type}/te-koop/{postcode}/{city}/{id}`
+    where `{id}` is alphanumeric (e.g. `vbe15512`, `rbv78631`).
 
-discover() and fetch() use the same sitemap-driven approach as Zimmo;
-will adjust on first live run.
+We filter to:
+  - sale-only (URL contains `/te-koop/`),
+  - postcode in scope (Belgian 4-digit segment).
 """
 
 from __future__ import annotations
@@ -19,6 +23,7 @@ from collections.abc import Iterable
 from typing import ClassVar
 
 from localizer.connectors._parsing import extract_json_ld, find_jsonld_by_type
+from localizer.connectors._sitemaps import fetch_sitemap_text, iter_sitemap_locs
 from localizer.connectors.base import (
     Connector,
     HTTPClient,
@@ -30,9 +35,6 @@ from localizer.connectors.zimmo import (
     _classify_epc,
     _classify_property_type,
     _coerce_int,
-    _iter_sitemap_locs,
-    _looks_like_listing_url,
-    _postcode_from_url,
 )
 from localizer.core.dedup import compute_fingerprint
 from localizer.core.models import (
@@ -43,15 +45,13 @@ from localizer.core.models import (
 
 log = logging.getLogger(__name__)
 
-_SOURCE_ID_FROM_URL = re.compile(r"/(\d{6,})(?:[-/]|$)")
-
-
-def _is_listing_sitemap(url: str) -> bool:
-    """Heuristic: which child-sitemap holds for-sale listings on Immovlan?"""
-    lowered = url.lower()
-    return any(
-        s in lowered for s in ("te-koop", "a-vendre", "for-sale", "huis", "appartement", "listing")
-    )
+# Listing detail URL:
+#   /nl/detail/{type}/te-koop/{postcode}/{city}/{alphanum-id}
+_LISTING_URL = re.compile(
+    r"/nl/detail/[^/]+/te-koop/(\d{4})/[^/]+/([a-z0-9]+)/?$",
+    re.IGNORECASE,
+)
+_SUB_SITEMAP = re.compile(r"/nl_property-detail-\d+\.xml$")
 
 
 class ImmovlanConnector:
@@ -60,33 +60,33 @@ class ImmovlanConnector:
     base_url: ClassVar[str] = "https://www.immovlan.be"
 
     def discover(self, client: HTTPClient, postcodes: Iterable[int]) -> Iterable[ListingRef]:
-        """Sitemap-driven discovery. Same pattern as Zimmo, will adjust live."""
         wanted = set(postcodes)
         seen: set[str] = set()
         index_url = f"{self.base_url}/sitemap.xml"
 
         try:
-            index_xml = client.get(index_url).text()
-            sub_sitemaps = list(_iter_sitemap_locs(index_xml))
+            index_text = fetch_sitemap_text(client, index_url)
         except Exception as exc:  # pragma: no cover - live path
-            log.warning("Immovlan: sitemap index unreachable (%s)", exc)
-            sub_sitemaps = []
+            log.warning("Immovlan: sitemap index unreachable: %s", exc)
+            return
 
-        listing_sitemaps = [u for u in sub_sitemaps if _is_listing_sitemap(u)] or sub_sitemaps
+        sub_urls = [u for u in iter_sitemap_locs(index_text) if _SUB_SITEMAP.search(u)]
+        log.info("Immovlan: %d listing sub-sitemap(s) to walk", len(sub_urls))
 
-        for sitemap_url in listing_sitemaps:
+        for sub_url in sub_urls:
             try:
-                sitemap_xml = client.get(sitemap_url).text()
+                sub_text = fetch_sitemap_text(client, sub_url)
             except Exception as exc:  # pragma: no cover - live path
-                log.warning("Immovlan: sitemap %s failed: %s", sitemap_url, exc)
+                log.warning("Immovlan: sub-sitemap %s failed: %s", sub_url, exc)
                 continue
-            for url in _iter_sitemap_locs(sitemap_xml):
+            for url in iter_sitemap_locs(sub_text):
                 if url in seen:
                     continue
-                pc = _postcode_from_url(url)
-                if pc is None or pc not in wanted:
+                m = _LISTING_URL.search(url)
+                if m is None:
                     continue
-                if not _looks_like_listing_url(url):
+                pc = int(m.group(1))
+                if pc not in wanted:
                     continue
                 seen.add(url)
                 yield ListingRef(url=url)
@@ -129,10 +129,10 @@ class ImmovlanConnector:
         epc_kwh = _coerce_int(residence.get("energyConsumption"))
 
         source_url = residence.get("url") or raw.source_url
-        m = _SOURCE_ID_FROM_URL.search(str(source_url))
+        m = _LISTING_URL.search(str(source_url))
         if m is None:
             raise ValueError(f"Cannot extract Immovlan source_id from URL: {source_url}")
-        source_id = m.group(1)
+        source_id = m.group(2)
 
         image = residence.get("image")
         if isinstance(image, list):

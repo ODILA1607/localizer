@@ -22,7 +22,7 @@ FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 def immovlan_listing_raw() -> RawListing:
     body = (FIXTURES / "immovlan_listing.html").read_bytes()
     return RawListing(
-        source_url="https://www.immovlan.be/nl/detail/huis/te-koop/8000-brugge/8675309-halfopen",
+        source_url="https://immovlan.be/nl/detail/huis/te-koop/8000/brugge/vbe12345",
         body=body,
     )
 
@@ -45,7 +45,7 @@ def test_immovlan_parses_canonical_fields(immovlan_listing_raw: RawListing) -> N
 def test_immovlan_attaches_correct_source(immovlan_listing_raw: RawListing) -> None:
     listing = ImmovlanConnector().parse(immovlan_listing_raw)
     assert listing.sources[0].source_name is SourceName.IMMOVLAN
-    assert listing.sources[0].source_id == "8675309"
+    assert listing.sources[0].source_id == "vbe12345"
 
 
 def test_immovlan_rejects_html_without_jsonld() -> None:
