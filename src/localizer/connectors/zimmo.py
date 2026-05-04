@@ -193,12 +193,7 @@ class ZimmoConnector:
         if isinstance(image, list):
             image = image[0] if image else None
 
-        fingerprint = compute_fingerprint(
-            straat=straat,
-            postcode=postcode,
-            oppervlakte_bewoonbaar_m2=opp,
-            slaapkamers=slaapkamers,
-        )
+        fingerprint = compute_fingerprint(source_name=self.name, source_id=source_id)
 
         return Listing.model_validate(
             {

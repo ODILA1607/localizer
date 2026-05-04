@@ -84,17 +84,13 @@ def test_runner_inserts_each_unique_listing(tmp_path: Path) -> None:
             source=SourceName.ZIMMO,
             source_id="z-1",
             source_url="https://example.test/1",
-            fingerprint=compute_fingerprint(
-                straat="A 1", postcode=8500, oppervlakte_bewoonbaar_m2=100, slaapkamers=2
-            ),
+            fingerprint=compute_fingerprint(source_name=SourceName.ZIMMO, source_id="z-1"),
         ),
         _make_listing(
             source=SourceName.ZIMMO,
             source_id="z-2",
             source_url="https://example.test/2",
-            fingerprint=compute_fingerprint(
-                straat="B 2", postcode=8500, oppervlakte_bewoonbaar_m2=120, slaapkamers=3
-            ),
+            fingerprint=compute_fingerprint(source_name=SourceName.ZIMMO, source_id="z-2"),
         ),
     ]
     db_path = tmp_path / "loc.db"
@@ -121,14 +117,17 @@ def test_runner_inserts_each_unique_listing(tmp_path: Path) -> None:
         assert len(db.all_listings(conn)) == 2
 
 
-def test_runner_merges_duplicates_across_connectors(tmp_path: Path) -> None:
-    """Same property indexed by Zimmo and Immoscoop merges into 1 canonical row."""
-    fp = compute_fingerprint(
-        straat="Kerkstraat 12",
-        postcode=8500,
-        oppervlakte_bewoonbaar_m2=140,
-        slaapkamers=3,
-    )
+def test_runner_merges_listings_with_identical_fingerprints(tmp_path: Path) -> None:
+    """`merge_or_insert` is fingerprint-based: two listings sharing a
+    fingerprint must merge into one canonical row (regardless of which
+    rule produced the fingerprint).
+
+    In V1 the connectors compute fingerprints from (source, source_id),
+    so cross-source merge does NOT happen automatically. This test feeds
+    in a manually-equal fingerprint to verify the merge mechanism still
+    works for whatever V1.1 produces (smart matching, etc.).
+    """
+    fp = "shared-fingerprint-1234567890ab"
     zimmo_listing = _make_listing(
         source=SourceName.ZIMMO,
         source_id="z-100",
@@ -186,9 +185,7 @@ def test_runner_records_per_listing_errors_without_aborting(tmp_path: Path) -> N
             source=SourceName.ZIMMO,
             source_id="ok",
             source_url="https://example.test/ok",
-            fingerprint=compute_fingerprint(
-                straat="ok", postcode=8500, oppervlakte_bewoonbaar_m2=100, slaapkamers=2
-            ),
+            fingerprint=compute_fingerprint(source_name=SourceName.ZIMMO, source_id="ok"),
         ),
     ]
 
@@ -204,9 +201,7 @@ def test_runner_records_per_listing_errors_without_aborting(tmp_path: Path) -> N
             source=SourceName.ZIMMO,
             source_id="boom",
             source_url="https://example.test/boom",
-            fingerprint=compute_fingerprint(
-                straat="boom", postcode=8500, oppervlakte_bewoonbaar_m2=100, slaapkamers=2
-            ),
+            fingerprint=compute_fingerprint(source_name=SourceName.ZIMMO, source_id="boom"),
         ),
     ]
 

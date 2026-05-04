@@ -1,10 +1,14 @@
-"""Tests for the dedup fingerprint."""
+"""Tests for the dedup fingerprint and address-normalisation helpers."""
 
 from __future__ import annotations
 
 from localizer.core.dedup import compute_fingerprint, normalise_address_part
+from localizer.core.models import SourceName
 
 
+# ---------------------------------------------------------------------------
+# Address normalisation (kept around for V1.1 cross-source matching)
+# ---------------------------------------------------------------------------
 def test_normalise_strips_diacritics_and_punctuation() -> None:
     assert normalise_address_part("Sint-Niklaasstraat") == "sintniklaasstraat"
     assert normalise_address_part("Émile Vanderveldelaan 23A") == "emilevanderveldelaan23a"
@@ -16,52 +20,43 @@ def test_normalise_handles_none_and_empty() -> None:
     assert normalise_address_part("") == ""
 
 
+# ---------------------------------------------------------------------------
+# Fingerprint — V1: per (source, source_id)
+# ---------------------------------------------------------------------------
 def test_fingerprint_is_deterministic() -> None:
-    fp1 = compute_fingerprint(
-        straat="Kerkstraat 12", postcode=8500, oppervlakte_bewoonbaar_m2=120, slaapkamers=3
-    )
-    fp2 = compute_fingerprint(
-        straat="Kerkstraat 12", postcode=8500, oppervlakte_bewoonbaar_m2=120, slaapkamers=3
-    )
-    assert fp1 == fp2
-    assert len(fp1) == 32  # blake2b digest_size=16 → 32 hex chars
+    a = compute_fingerprint(source_name=SourceName.ZIMMO, source_id="123")
+    b = compute_fingerprint(source_name=SourceName.ZIMMO, source_id="123")
+    assert a == b
+    assert len(a) == 32  # blake2b digest_size=16 -> 32 hex chars
 
 
-def test_fingerprint_ignores_capitalisation_and_spacing() -> None:
-    fp1 = compute_fingerprint(
-        straat="kerkstraat 12", postcode=8500, oppervlakte_bewoonbaar_m2=120, slaapkamers=3
-    )
-    fp2 = compute_fingerprint(
-        straat="  KERKSTRAAT  12  ",
-        postcode=8500,
-        oppervlakte_bewoonbaar_m2=120,
-        slaapkamers=3,
-    )
-    assert fp1 == fp2
+def test_fingerprint_accepts_string_source_name() -> None:
+    """SourceName enum and its string value must produce the same hash."""
+    a = compute_fingerprint(source_name=SourceName.ZIMMO, source_id="123")
+    b = compute_fingerprint(source_name="zimmo", source_id="123")
+    assert a == b
 
 
-def test_fingerprint_differs_on_different_property() -> None:
-    fp_a = compute_fingerprint(
-        straat="Kerkstraat 12", postcode=8500, oppervlakte_bewoonbaar_m2=120, slaapkamers=3
-    )
-    fp_b = compute_fingerprint(
-        straat="Kerkstraat 14", postcode=8500, oppervlakte_bewoonbaar_m2=120, slaapkamers=3
-    )
-    assert fp_a != fp_b
+def test_fingerprint_differs_on_different_id() -> None:
+    a = compute_fingerprint(source_name=SourceName.ZIMMO, source_id="123")
+    b = compute_fingerprint(source_name=SourceName.ZIMMO, source_id="124")
+    assert a != b
 
 
-def test_fingerprint_differs_on_different_postcode() -> None:
-    fp_a = compute_fingerprint(
-        straat="Kerkstraat 12", postcode=8500, oppervlakte_bewoonbaar_m2=120, slaapkamers=3
-    )
-    fp_b = compute_fingerprint(
-        straat="Kerkstraat 12", postcode=9000, oppervlakte_bewoonbaar_m2=120, slaapkamers=3
-    )
-    assert fp_a != fp_b
+def test_fingerprint_differs_on_different_source() -> None:
+    """Same id from different sources must NOT collide.
+
+    This is the property that broke V0: when geographical fields were
+    null, fingerprints collapsed and unrelated listings merged.
+    """
+    a = compute_fingerprint(source_name=SourceName.ZIMMO, source_id="123")
+    b = compute_fingerprint(source_name=SourceName.IMMOSCOOP, source_id="123")
+    assert a != b
 
 
-def test_fingerprint_handles_missing_data() -> None:
-    fp = compute_fingerprint(
-        straat=None, postcode=8500, oppervlakte_bewoonbaar_m2=None, slaapkamers=None
-    )
-    assert len(fp) == 32  # never crashes; degraded but stable
+def test_fingerprint_handles_alphanumeric_id() -> None:
+    """Immovlan uses ids like 'vbe15512'."""
+    a = compute_fingerprint(source_name=SourceName.IMMOVLAN, source_id="vbe15512")
+    b = compute_fingerprint(source_name=SourceName.IMMOVLAN, source_id="rbv78631")
+    assert a != b
+    assert len(a) == 32

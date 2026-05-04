@@ -1,21 +1,27 @@
-"""Cross-source duplicate detection.
+"""Canonical-listing identity + cross-source merge.
 
-A property advertised on Zimmo, Immoscoop and Immoweb is *one* canonical
-listing with three `ListingSource` rows — not three separate listings.
+V1 design (the simple, correct one):
+  - The `fingerprint` is `blake2b(source_name + source_id)`. Two listings
+    map to the same fingerprint *only* when they come from the same
+    source with the same source-assigned ID. Re-running the same
+    connector against the same property therefore stays idempotent
+    (same fingerprint → merge), but two different properties never
+    collide.
+  - Cross-source duplicates ("the same house listed on Zimmo and
+    Immoscoop") become **two separate canonical rows in V1**. Detecting
+    them automatically would need richer signals than what JSON-LD
+    consistently gives us — full street normalisation, photo hashing,
+    fuzzy matching. That is V1.1 work; the architecture (Listing.sources
+    is already a list, `merge_or_insert` is already in place) supports
+    plugging that in later without a schema change.
 
-Strategy:
-  1. Compute a stable `fingerprint` from features that are bron-onafhankelijk
-     and rarely vary across listings of the same property:
-        normalised(straat + huisnummer) + postcode + opp_bewoonbaar + slaapkamers
-  2. If two listings produce the same fingerprint they are merged: a single
-     `Listing` keeps both `ListingSource` entries.
-  3. When street or surface info is missing (cheaper bronnen often omit
-     huisnummer) the fingerprint degrades gracefully — it still hashes
-     deterministically, but collisions are more likely. That is acceptable:
-     a false-positive merge is recoverable, a false-negative duplicate is
-     visible noise to the user.
+The earlier attempt used `straat + postcode + opp + bedrooms`, which
+collapsed to "just postcode" whenever Immovlan's JSON-LD omitted
+streetAddress — and produced false-positive merges of clearly different
+properties in the same town. See git log for the post-mortem.
 
-Photo-hash matching as a tiebreaker is planned for a later milestone.
+`normalise_address_part` is kept intact: V1.1 cross-source matching
+will use it.
 """
 
 from __future__ import annotations
@@ -26,7 +32,7 @@ import sqlite3
 import unicodedata
 
 from localizer.core import db
-from localizer.core.models import Listing, ListingSource, utc_now
+from localizer.core.models import Listing, ListingSource, SourceName, utc_now
 
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
@@ -46,25 +52,15 @@ def normalise_address_part(value: str | None) -> str:
     return _NON_ALNUM.sub("", ascii_only.lower())
 
 
-def compute_fingerprint(
-    *,
-    straat: str | None,
-    postcode: int,
-    oppervlakte_bewoonbaar_m2: int | None,
-    slaapkamers: int | None,
-) -> str:
-    """Return a 32-char hex fingerprint usable as the canonical dedup key.
+def compute_fingerprint(*, source_name: SourceName | str, source_id: str) -> str:
+    """Per-(source, source_id) canonical fingerprint.
 
-    Collisions are technically possible but extremely unlikely for distinct
-    real-world properties given the input-space.
+    Same source + same id ⇒ same fingerprint (idempotent re-run).
+    Different ids or different sources ⇒ different fingerprints (no false
+    merges).
     """
-    parts = (
-        normalise_address_part(straat),
-        str(postcode),
-        str(oppervlakte_bewoonbaar_m2 or 0),
-        str(slaapkamers or 0),
-    )
-    raw = "|".join(parts).encode("utf-8")
+    name = source_name.value if isinstance(source_name, SourceName) else source_name
+    raw = f"{name}:{source_id}".encode()
     return hashlib.blake2b(raw, digest_size=16).hexdigest()
 
 

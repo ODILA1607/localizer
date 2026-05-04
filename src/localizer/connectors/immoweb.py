@@ -156,12 +156,7 @@ class ImmowebConnector:
         else:
             image = classified.get("mainPhoto") or classified.get("image")
 
-        fingerprint = compute_fingerprint(
-            straat=straat,
-            postcode=postcode,
-            oppervlakte_bewoonbaar_m2=opp,
-            slaapkamers=slaapkamers,
-        )
+        fingerprint = compute_fingerprint(source_name=self.name, source_id=source_id)
 
         return Listing.model_validate(
             {
