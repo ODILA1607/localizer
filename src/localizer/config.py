@@ -25,15 +25,18 @@ def is_in_scope(postcode: int) -> bool:
 # ---------------------------------------------------------------------------
 # HTTP defaults
 # ---------------------------------------------------------------------------
-# Browser-like User-Agent. Belgian listing sites (Cloudflare-fronted ones
-# in particular) immediately 403 unidentified Python clients. We still
-# identify ourselves to site owners through the `From` header further
-# down the stack — that's the IETF-standard place for operator contact.
-USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/127.0.0.0 Safari/537.36"
-)
+# Cloudflare-fronted Belgian listing sites (Zimmo, Immoweb...) inspect
+# TLS handshakes and immediately 403 anything that is not a real
+# browser. Use curl_cffi to reproduce a Chrome 120 fingerprint end-to-end:
+# TLS handshake, ALPN, ALPS, Sec-CH-UA headers, Accept ordering — the
+# whole package. The User-Agent we send is whatever curl_cffi assigns
+# to that browser version.
+#
+# `ROBOTS_USER_AGENT` is *only* used to evaluate robots.txt rules, not
+# sent over the wire. "*" picks the catch-all rule set, which is the
+# right thing for a desktop tool that is not registered as a named bot.
+HTTP_IMPERSONATE = "chrome120"
+ROBOTS_USER_AGENT = "*"
 OPERATOR_CONTACT = "info@odila.be"
 DEFAULT_RATE_LIMIT_PER_MIN = 30
 HTTP_TIMEOUT_SECONDS = 30

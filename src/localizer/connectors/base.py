@@ -32,16 +32,17 @@ import urllib.robotparser
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import ClassVar, Protocol, runtime_checkable
+from typing import Any, ClassVar, Protocol, runtime_checkable
 from urllib.parse import urlparse
 
-import httpx
+from curl_cffi import requests as curl_requests
 
 from localizer.config import (
     DEFAULT_RATE_LIMIT_PER_MIN,
+    HTTP_IMPERSONATE,
     HTTP_TIMEOUT_SECONDS,
     OPERATOR_CONTACT,
-    USER_AGENT,
+    ROBOTS_USER_AGENT,
 )
 from localizer.core.models import Listing, SourceName, utc_now
 
@@ -115,12 +116,12 @@ class RateLimiter:
 class RobotsCache:
     """Cached robots.txt lookups per host. Fail-open on parse errors."""
 
-    def __init__(self, user_agent: str = USER_AGENT) -> None:
+    def __init__(self, user_agent: str = ROBOTS_USER_AGENT) -> None:
         self._user_agent = user_agent
         self._parsers: dict[str, urllib.robotparser.RobotFileParser] = {}
         self._lock = threading.Lock()
 
-    def can_fetch(self, url: str, *, fetch_robots: httpx.Client | None = None) -> bool:
+    def can_fetch(self, url: str, *, fetch_robots: Any | None = None) -> bool:
         """Return True if `url` is allowed for our user-agent.
 
         Fail-open policy: when robots.txt is unreachable, returns 4xx /
@@ -183,10 +184,10 @@ class RobotsCache:
 class HTTPClient:
     """Shared HTTP client used by every connector. Owns rate-limiter + robots.
 
-    Connectors call `.get(url)` and receive a `RawListing` or raise
-    `RobotsBlockedError` / `httpx.HTTPError`. They cannot bypass the limiter
-    because there is no other path to the network from inside the
-    connectors package.
+    Internals: `curl_cffi` Session impersonating Chrome — TLS, ALPN,
+    Sec-CH-UA headers, the lot. This is what gets us past Cloudflare on
+    Zimmo / Immoweb. Connectors talk to `.get(url)` and receive a
+    `RawListing`, or `RobotsBlockedError` / `requests.HTTPError`.
     """
 
     def __init__(
@@ -194,33 +195,25 @@ class HTTPClient:
         *,
         rate_limiter: RateLimiter | None = None,
         robots: RobotsCache | None = None,
-        user_agent: str = USER_AGENT,
+        impersonate: str = HTTP_IMPERSONATE,
         timeout: float = HTTP_TIMEOUT_SECONDS,
     ) -> None:
         self._rate_limiter = rate_limiter or RateLimiter()
-        self._robots = robots or RobotsCache(user_agent=user_agent)
-        self._client = httpx.Client(
-            headers={
-                "User-Agent": user_agent,
-                "Accept": (
-                    "text/html,application/xhtml+xml,application/xml;q=0.9,"
-                    "image/avif,image/webp,*/*;q=0.8"
-                ),
-                "Accept-Language": "nl-BE,nl;q=0.9,en;q=0.7",
-                "Accept-Encoding": "gzip, deflate, br",
-                "Sec-Ch-Ua": '"Chromium";v="127", "Not A(Brand";v="24"',
-                "Sec-Ch-Ua-Mobile": "?0",
-                "Sec-Ch-Ua-Platform": '"Windows"',
-                "Sec-Fetch-Dest": "document",
-                "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "none",
-                "Sec-Fetch-User": "?1",
-                "Upgrade-Insecure-Requests": "1",
-                "From": OPERATOR_CONTACT,
-            },
+        self._robots = robots or RobotsCache()
+        # `impersonate` is a Literal in curl_cffi's stubs; we want it
+        # configurable via a plain string in config.py.
+        self._client = curl_requests.Session(
+            impersonate=impersonate,  # type: ignore[arg-type]
             timeout=timeout,
-            follow_redirects=True,
-            http2=True,
+        )
+        # curl_cffi already sends Chrome's full Accept / Sec-CH-UA /
+        # Sec-Fetch-* set when impersonating. We only add operator
+        # contact (IETF-standard `From`) and our preferred language.
+        self._client.headers.update(
+            {
+                "From": OPERATOR_CONTACT,
+                "Accept-Language": "nl-BE,nl;q=0.9,en;q=0.7",
+            }
         )
 
     @property
@@ -235,8 +228,8 @@ class HTTPClient:
 
         self._rate_limiter.acquire(parsed.netloc)
         log.debug("GET %s", url)
-        response = self._client.get(url)
-        response.raise_for_status()
+        response = self._client.get(url, allow_redirects=True)
+        response.raise_for_status()  # type: ignore[no-untyped-call]
         return RawListing(source_url=str(response.url), body=response.content)
 
     def close(self) -> None:
