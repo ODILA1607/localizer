@@ -54,6 +54,24 @@ def test_index_filters_by_postcode(populated_db: Path) -> None:
     assert "Geen listings" in miss
 
 
+def test_index_accepts_blank_int_filters(populated_db: Path) -> None:
+    """Browsers submit blank number inputs as `?prijs_min=&...`. Empty
+    strings must coerce to None — without it, FastAPI's int parser
+    raises 422 and the filter form breaks."""
+    with TestClient(ui_server.app) as client:
+        r = client.get(
+            "/?gemeente=&postcode=&prijs_min=&prijs_max=&slaapkamers_min=&opp_min="
+        )
+    assert r.status_code == 200
+    assert "Gent" in r.text  # seeded listing visible
+
+
+def test_map_accepts_blank_int_filters(populated_db: Path) -> None:
+    with TestClient(ui_server.app) as client:
+        r = client.get("/map?prijs_min=&prijs_max=&slaapkamers_min=&opp_min=&postcode=")
+    assert r.status_code == 200
+
+
 def test_set_status_updates_user_status(populated_db: Path) -> None:
     with db.connect(populated_db) as conn:
         rows = db.all_listings(conn)

@@ -20,6 +20,7 @@ from fastapi import FastAPI, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BeforeValidator
 
 from localizer import __version__
 from localizer.connectors.base import HTTPClient
@@ -42,6 +43,17 @@ _HERE = Path(__file__).resolve().parent
 _TEMPLATES = Jinja2Templates(directory=str(_HERE / "templates"))
 
 
+def _none_if_empty(v: object) -> object:
+    """Treat empty strings (sent by browsers for blank number inputs)
+    the same as 'no value provided'."""
+    return None if v == "" else v
+
+
+# Optional-int from a form: accepts both `?x=` and `?x=42`. Without
+# this validator FastAPI's int parser raises 422 on the empty case.
+OptInt = Annotated[int | None, BeforeValidator(_none_if_empty)]
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title=f"Localizer {__version__}", docs_url=None, redoc_url=None)
     app.mount("/static", StaticFiles(directory=str(_HERE / "static")), name="static")
@@ -50,11 +62,11 @@ def create_app() -> FastAPI:
     def home(
         request: Request,
         gemeente: Annotated[str | None, Query()] = None,
-        postcode: Annotated[int | None, Query()] = None,
-        prijs_min: Annotated[int | None, Query()] = None,
-        prijs_max: Annotated[int | None, Query()] = None,
-        slaapkamers_min: Annotated[int | None, Query()] = None,
-        opp_min: Annotated[int | None, Query()] = None,
+        postcode: Annotated[OptInt, Query()] = None,
+        prijs_min: Annotated[OptInt, Query()] = None,
+        prijs_max: Annotated[OptInt, Query()] = None,
+        slaapkamers_min: Annotated[OptInt, Query()] = None,
+        opp_min: Annotated[OptInt, Query()] = None,
         epc: Annotated[list[str] | None, Query()] = None,
         type_: Annotated[list[str] | None, Query(alias="type")] = None,
         staat: Annotated[list[str] | None, Query()] = None,
@@ -134,11 +146,11 @@ def create_app() -> FastAPI:
     def map_view(
         request: Request,
         gemeente: Annotated[str | None, Query()] = None,
-        postcode: Annotated[int | None, Query()] = None,
-        prijs_min: Annotated[int | None, Query()] = None,
-        prijs_max: Annotated[int | None, Query()] = None,
-        slaapkamers_min: Annotated[int | None, Query()] = None,
-        opp_min: Annotated[int | None, Query()] = None,
+        postcode: Annotated[OptInt, Query()] = None,
+        prijs_min: Annotated[OptInt, Query()] = None,
+        prijs_max: Annotated[OptInt, Query()] = None,
+        slaapkamers_min: Annotated[OptInt, Query()] = None,
+        opp_min: Annotated[OptInt, Query()] = None,
         epc: Annotated[list[str] | None, Query()] = None,
         type_: Annotated[list[str] | None, Query(alias="type")] = None,
         staat: Annotated[list[str] | None, Query()] = None,
