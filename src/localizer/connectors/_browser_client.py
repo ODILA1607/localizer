@@ -65,6 +65,7 @@ class PlaywrightHTTPClient:
         self._rate_limiter = rate_limiter or RateLimiter()
         self._robots = robots or RobotsCache()
         self._timeout_ms = int(timeout_seconds * 1000)
+        self._warmed_hosts: set[str] = set()
 
         try:
             self._pw: Playwright = sync_playwright().start()
@@ -77,8 +78,6 @@ class PlaywrightHTTPClient:
                     "Accept-Language": "nl-BE,nl;q=0.9,en;q=0.7",
                 },
             )
-            # Ten-second default timeout is enough for most goto's; we
-            # override per-call below if Cloudflare challenge takes longer.
             self._context.set_default_timeout(self._timeout_ms)
         except Exception as exc:
             raise BrowserUnavailableError(
@@ -94,30 +93,42 @@ class PlaywrightHTTPClient:
         parsed = urlparse(url)
         host = parsed.netloc
 
-        # Robots.txt: try a quick fetch via the browser context too. If
-        # robots.txt itself is gated by Cloudflare, fail-open.
         if not self._robots.can_fetch(url):
             raise RobotsBlockedError(url)
 
         self._rate_limiter.acquire(host)
-        log.debug("Browser GET %s", url)
+        self._ensure_warmed(parsed.scheme, host)
 
+        log.debug("Browser-request GET %s", url)
+        response = self._context.request.get(url, timeout=self._timeout_ms)
+        status = response.status
+        if status >= 400:
+            raise RuntimeError(f"HTTP {status} on {url}")
+        body = response.body()
+        final_url = response.url
+        return RawListing(source_url=final_url, body=body)
+
+    def _ensure_warmed(self, scheme: str, host: str) -> None:
+        """Visit the homepage once via a real Page so Cloudflare's JS
+        challenge runs and `cf_clearance` lands in the context cookie
+        jar. Subsequent calls reuse `context.request` for raw HTTP.
+        """
+        if host in self._warmed_hosts:
+            return
+        self._warmed_hosts.add(host)  # mark first to avoid loops on failure
+        homepage = f"{scheme}://{host}/"
+        log.info("Warming up Cloudflare cookies for %s via Chromium", host)
         page = self._context.new_page()
         try:
-            # `domcontentloaded` returns when initial DOM is ready; we
-            # then wait briefly for `networkidle` so any JS-challenge
-            # redirect/cookie set has time to land.
-            page.goto(url, wait_until="domcontentloaded", timeout=self._timeout_ms)
+            page.goto(homepage, wait_until="domcontentloaded", timeout=self._timeout_ms)
             try:
                 page.wait_for_load_state("networkidle", timeout=10_000)
             except Exception as exc:
-                log.debug("networkidle timeout for %s: %s — using DOM as-is", url, exc)
-            content = page.content()
-            final_url = page.url
+                log.debug("networkidle timeout during warmup for %s: %s", host, exc)
+        except Exception as exc:
+            log.warning("Browser warmup for %s failed: %s — continuing", host, exc)
         finally:
             page.close()
-
-        return RawListing(source_url=final_url, body=content.encode("utf-8"))
 
     def close(self) -> None:
         """Tear the Chromium instance down. Idempotent."""
