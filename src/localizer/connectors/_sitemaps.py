@@ -18,7 +18,7 @@ import logging
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 
-from localizer.connectors.base import HTTPClient
+from localizer.connectors.base import HTTPClientProtocol
 
 log = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ _SITEMAP_NAMESPACE = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
 _GZIP_MAGIC = b"\x1f\x8b"
 
 
-def fetch_sitemap_text(client: HTTPClient, url: str) -> str:
+def fetch_sitemap_text(client: HTTPClientProtocol, url: str) -> str:
     """Fetch `url` and decompress if it is gzipped (`.xml.gz` or magic bytes)."""
     raw = client.get(url)
     body = raw.body

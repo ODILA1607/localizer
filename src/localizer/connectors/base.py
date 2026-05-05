@@ -278,6 +278,20 @@ class RobotsBlockedError(RuntimeError):
 
 
 # ---------------------------------------------------------------------------
+# HTTPClientProtocol — the surface a Connector actually consumes.
+# ---------------------------------------------------------------------------
+# `HTTPClient` (curl_cffi-based, fast) and `PlaywrightHTTPClient`
+# (real Chromium, used for Cloudflare-protected sites) both implement
+# this. The runner picks one per connector via `requires_browser`.
+@runtime_checkable
+class HTTPClientProtocol(Protocol):
+    def get(self, url: str) -> RawListing:
+        """Fetch `url` and return its body. Raises on transport errors."""
+
+    def close(self) -> None: ...
+
+
+# ---------------------------------------------------------------------------
 # The Connector Protocol
 # ---------------------------------------------------------------------------
 @runtime_checkable
@@ -286,16 +300,24 @@ class Connector(Protocol):
 
     Class-level metadata (`name`, `display_name`, `base_url`) makes the
     connector identifiable to the registry without instantiation.
+
+    `requires_browser` (defaults to False) signals to the runner that
+    this connector needs a real-browser HTTP client (Playwright) rather
+    than the default curl_cffi one — relevant for Cloudflare-protected
+    sites that demand JS-challenge solving.
     """
 
     name: ClassVar[SourceName]
     display_name: ClassVar[str]
     base_url: ClassVar[str]
+    requires_browser: ClassVar[bool]
 
-    def discover(self, client: HTTPClient, postcodes: Iterable[int]) -> Iterable[ListingRef]:
+    def discover(
+        self, client: HTTPClientProtocol, postcodes: Iterable[int]
+    ) -> Iterable[ListingRef]:
         """Yield URLs of listing detail pages within `postcodes`."""
 
-    def fetch(self, client: HTTPClient, ref: ListingRef) -> RawListing:
+    def fetch(self, client: HTTPClientProtocol, ref: ListingRef) -> RawListing:
         """Download a single listing's detail page."""
 
     def parse(self, raw: RawListing) -> Listing:

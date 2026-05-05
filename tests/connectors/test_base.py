@@ -61,17 +61,35 @@ def test_registry_lists_all_four_connectors() -> None:
     }
 
 
-def test_default_enabled_is_immoscoop_and_immovlan() -> None:
-    """Zimmo + Immoweb sit behind Cloudflare JS-challenge (V1.1 work)."""
-    assert DEFAULT_ENABLED == frozenset({SourceName.IMMOSCOOP, SourceName.IMMOVLAN})
+def test_default_enabled_is_all_four_sources() -> None:
+    """All four bronnen are now in default — Cloudflare ones use Playwright."""
+    assert DEFAULT_ENABLED == frozenset(
+        {
+            SourceName.ZIMMO,
+            SourceName.IMMOSCOOP,
+            SourceName.IMMOVLAN,
+            SourceName.IMMOWEB,
+        }
+    )
 
 
-def test_enabled_connectors_returns_instances() -> None:
+def test_enabled_connectors_returns_all_four_instances() -> None:
     instances = enabled_connectors()
     assert {c.name for c in instances} == {
+        SourceName.ZIMMO,
         SourceName.IMMOSCOOP,
         SourceName.IMMOVLAN,
+        SourceName.IMMOWEB,
     }
+
+
+def test_browser_required_flag_is_set_correctly() -> None:
+    """Cloudflare-protected sources opt into the Playwright client."""
+    by_name = {c.name: c for c in enabled_connectors()}
+    assert by_name[SourceName.ZIMMO].requires_browser is True
+    assert by_name[SourceName.IMMOWEB].requires_browser is True
+    assert by_name[SourceName.IMMOSCOOP].requires_browser is False
+    assert by_name[SourceName.IMMOVLAN].requires_browser is False
 
 
 def test_enabled_connectors_can_be_overridden() -> None:

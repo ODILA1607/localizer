@@ -1,22 +1,29 @@
-"""Immoweb connector — third source (V1.1) wegens Cloudflare-bot-protection.
+"""Immoweb connector — V1.1 active source (Cloudflare bypass via Playwright).
 
-Strategy: bot-protection laag 2 (curl_cffi TLS-fingerprint) + laag 3
-(`__NEXT_DATA__` JSON-blob in de HTML, schoonst voor Immoweb). Playwright
-is een laatste redmiddel en wordt niet standaard gebundeld.
+Strategy: `requires_browser=True` so the runner hands us a
+`PlaywrightHTTPClient`. Real Chromium solves Cloudflare's JS challenge,
+the cf_clearance cookie persists in the browser context, then every
+listing page loads normally. Immoweb's listing detail pages embed the
+full property in a `__NEXT_DATA__` JSON-LD-style script tag — the
+cleanest data source on any of the four bronnen.
 
-discover() and fetch() land in M3 / V1.1; parse() is already wired so
-fixtures captured today validate the architecture.
+Sitemap layout (best-effort assumption; will adjust on first live run):
+  - /sitemap.xml is a sitemapindex.
+  - Listing detail URLs: /nl/classified/{type}/te-koop/{city}/{postcode}/{id}
 """
 
 from __future__ import annotations
 
+import logging
+import re
 from collections.abc import Iterable
 from typing import Any, ClassVar
 
 from localizer.connectors._parsing import extract_next_data
+from localizer.connectors._sitemaps import fetch_sitemap_text, iter_sitemap_locs
 from localizer.connectors.base import (
     Connector,
-    HTTPClient,
+    HTTPClientProtocol,
     ListingRef,
     RawListing,
 )
@@ -79,16 +86,66 @@ def _find_classified(data: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+log = logging.getLogger(__name__)
+
+# Listing URL pattern (best-effort assumption; adjust after first live run).
+# Example: /nl/classified/villa/te-koop/brugge/8000/11223344
+_LISTING_URL = re.compile(
+    r"/nl/classified/[^/]+/te-koop/[^/]+/(\d{4})/(\d+)/?$",
+    re.IGNORECASE,
+)
+# Heuristic for sub-sitemap names that hold listings. Will adjust live.
+_SUB_SITEMAP_HINT = re.compile(
+    r"classified|te-koop|listing|nl",
+    re.IGNORECASE,
+)
+
+
 class ImmowebConnector:
     name: ClassVar[SourceName] = SourceName.IMMOWEB
     display_name: ClassVar[str] = "Immoweb"
     base_url: ClassVar[str] = "https://www.immoweb.be"
+    requires_browser: ClassVar[bool] = True  # Cloudflare JS-challenge
 
-    def discover(self, client: HTTPClient, postcodes: Iterable[int]) -> Iterable[ListingRef]:
-        raise NotImplementedError("Immoweb discover() lands in V1.1.")
+    def discover(
+        self, client: HTTPClientProtocol, postcodes: Iterable[int]
+    ) -> Iterable[ListingRef]:
+        """Sitemap-driven discovery; will be calibrated on first live run."""
+        wanted = set(postcodes)
+        seen: set[str] = set()
+        index_url = f"{self.base_url}/sitemap.xml"
 
-    def fetch(self, client: HTTPClient, ref: ListingRef) -> RawListing:
-        raise NotImplementedError("Immoweb fetch() lands in V1.1.")
+        try:
+            index_text = fetch_sitemap_text(client, index_url)
+        except Exception as exc:  # pragma: no cover - live path
+            log.warning("Immoweb: sitemap index unreachable: %s", exc)
+            return
+
+        sub_urls = [
+            u for u in iter_sitemap_locs(index_text) if _SUB_SITEMAP_HINT.search(u)
+        ] or list(iter_sitemap_locs(index_text))
+        log.info("Immoweb: %d listing sub-sitemap(s) to walk", len(sub_urls))
+
+        for sub_url in sub_urls:
+            try:
+                sub_text = fetch_sitemap_text(client, sub_url)
+            except Exception as exc:  # pragma: no cover - live path
+                log.warning("Immoweb: sub-sitemap %s failed: %s", sub_url, exc)
+                continue
+            for url in iter_sitemap_locs(sub_text):
+                if url in seen:
+                    continue
+                m = _LISTING_URL.search(url)
+                if m is None:
+                    continue
+                pc = int(m.group(1))
+                if pc not in wanted:
+                    continue
+                seen.add(url)
+                yield ListingRef(url=url)
+
+    def fetch(self, client: HTTPClientProtocol, ref: ListingRef) -> RawListing:
+        return client.get(ref.url)
 
     def parse(self, raw: RawListing) -> Listing:
         next_data = extract_next_data(raw.text())

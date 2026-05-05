@@ -40,7 +40,7 @@ from localizer.connectors._parsing import (
 from localizer.connectors._sitemaps import fetch_sitemap_text, iter_sitemap_locs
 from localizer.connectors.base import (
     Connector,
-    HTTPClient,
+    HTTPClientProtocol,
     ListingRef,
     RawListing,
 )
@@ -69,8 +69,11 @@ class ImmovlanConnector:
     name: ClassVar[SourceName] = SourceName.IMMOVLAN
     display_name: ClassVar[str] = "Immovlan"
     base_url: ClassVar[str] = "https://www.immovlan.be"
+    requires_browser: ClassVar[bool] = False
 
-    def discover(self, client: HTTPClient, postcodes: Iterable[int]) -> Iterable[ListingRef]:
+    def discover(
+        self, client: HTTPClientProtocol, postcodes: Iterable[int]
+    ) -> Iterable[ListingRef]:
         wanted = set(postcodes)
         seen: set[str] = set()
         index_url = f"{self.base_url}/sitemap.xml"
@@ -110,7 +113,7 @@ class ImmovlanConnector:
             return None
         return int(m.group(1)), m.group(2).replace("-", " ").title(), m.group(3)
 
-    def fetch(self, client: HTTPClient, ref: ListingRef) -> RawListing:
+    def fetch(self, client: HTTPClientProtocol, ref: ListingRef) -> RawListing:
         return client.get(ref.url)
 
     def parse(self, raw: RawListing) -> Listing:

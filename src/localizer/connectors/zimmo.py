@@ -18,7 +18,7 @@ from localizer.connectors._parsing import extract_json_ld, find_jsonld_by_type
 from localizer.connectors._sitemaps import fetch_sitemap_text, iter_sitemap_locs
 from localizer.connectors.base import (
     Connector,
-    HTTPClient,
+    HTTPClientProtocol,
     ListingRef,
     RawListing,
 )
@@ -109,8 +109,11 @@ class ZimmoConnector:
     name: ClassVar[SourceName] = SourceName.ZIMMO
     display_name: ClassVar[str] = "Zimmo"
     base_url: ClassVar[str] = "https://www.zimmo.be"
+    requires_browser: ClassVar[bool] = True  # Cloudflare JS-challenge
 
-    def discover(self, client: HTTPClient, postcodes: Iterable[int]) -> Iterable[ListingRef]:
+    def discover(
+        self, client: HTTPClientProtocol, postcodes: Iterable[int]
+    ) -> Iterable[ListingRef]:
         """Sitemap-driven discovery (currently blocked by Cloudflare; V1.1)."""
         wanted = set(postcodes)
         seen: set[str] = set()
@@ -146,7 +149,7 @@ class ZimmoConnector:
                 seen.add(url)
                 yield ListingRef(url=url)
 
-    def fetch(self, client: HTTPClient, ref: ListingRef) -> RawListing:
+    def fetch(self, client: HTTPClientProtocol, ref: ListingRef) -> RawListing:
         return client.get(ref.url)
 
     def parse(self, raw: RawListing) -> Listing:

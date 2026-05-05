@@ -49,6 +49,10 @@ py -3.13 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 
+# install Chromium for the Playwright client (one-time, ~150MB)
+# — needed for Zimmo + Immoweb (Cloudflare-protected)
+playwright install chromium
+
 # run tests
 pytest
 

@@ -29,6 +29,7 @@ class _FakeConnector:
     name: ClassVar[SourceName] = SourceName.ZIMMO
     display_name: ClassVar[str] = "Zimmo (fake)"
     base_url: ClassVar[str] = "https://example.test"
+    requires_browser: ClassVar[bool] = False  # tests use the HTTP client only
 
     def __init__(self, listings: list[Listing]) -> None:
         self._listings = listings
@@ -231,6 +232,7 @@ def test_runner_handles_not_implemented_gracefully(tmp_path: Path) -> None:
         name: ClassVar[SourceName] = SourceName.IMMOWEB
         display_name: ClassVar[str] = "Not ready"
         base_url: ClassVar[str] = "https://x.test"
+        requires_browser: ClassVar[bool] = False  # avoid spinning up Playwright
 
         def discover(self, client: HTTPClient, postcodes: Iterable[int]) -> Iterable[ListingRef]:
             raise NotImplementedError("not yet")

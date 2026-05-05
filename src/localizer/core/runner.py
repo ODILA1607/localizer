@@ -26,6 +26,7 @@ from localizer.config import POSTCODE_RANGES
 from localizer.connectors.base import (
     Connector,
     HTTPClient,
+    HTTPClientProtocol,
     ListingRef,
     RobotsBlockedError,
 )
@@ -106,20 +107,74 @@ def run_refresh(
     dramatic speedup on subsequent refreshes since only new listings
     are fetched. Pass False (`--full` from CLI) for a full re-fetch
     that picks up price changes / EPC updates / new photos.
+
+    Browser-required connectors (Zimmo, Immoweb — Cloudflare-protected)
+    get a `PlaywrightHTTPClient` instead of the curl_cffi-based one.
+    The browser client is launched lazily — only if the enabled set
+    contains a connector that needs it. Failure to launch Chromium
+    (typically `playwright install chromium` not run) results in those
+    connectors being skipped with a clear error per-connector; the
+    HTTP-only ones still complete normally.
     """
     started = utc_now()
     postcodes_list = list(postcodes) if postcodes is not None else _all_postcodes()
+    connector_list = list(connectors)
+    needs_browser = any(getattr(c, "requires_browser", False) for c in connector_list)
 
     per: list[ConnectorResult] = []
     db.initialise(db_path)
-    with db.connect(db_path) as conn:
-        for connector in connectors:
-            log.info("Running connector: %s", connector.name)
-            per.append(
-                _run_one(connector, client, conn, postcodes_list, max_per_source, skip_known)
-            )
-        finished = utc_now()
-        db.set_meta(conn, "last_refresh_at", finished.isoformat())
+
+    browser_client: HTTPClientProtocol | None = None
+    browser_error: str | None = None
+    if needs_browser:
+        # Imported lazily so HTTPClient-only refreshes don't pay the
+        # Playwright import cost.
+        from localizer.connectors._browser_client import (
+            BrowserUnavailableError,
+            PlaywrightHTTPClient,
+        )
+
+        try:
+            browser_client = PlaywrightHTTPClient()
+            log.info("Browser client (Playwright) launched for Cloudflare-protected sources")
+        except BrowserUnavailableError as exc:
+            browser_error = str(exc)
+            log.warning("Browser client unavailable: %s", browser_error)
+
+    try:
+        with db.connect(db_path) as conn:
+            for connector in connector_list:
+                use_browser = getattr(connector, "requires_browser", False)
+                if use_browser and browser_client is None:
+                    result = ConnectorResult(name=connector.name)
+                    result.errors.append(
+                        f"browser unavailable, skipping: {browser_error or 'unknown'}"
+                    )
+                    log.warning("%s: skipped (browser unavailable)", connector.name)
+                    per.append(result)
+                    continue
+                active_client = browser_client if use_browser else client
+                assert active_client is not None  # nosec - mypy guard
+                log.info(
+                    "Running connector: %s (%s)",
+                    connector.name,
+                    "browser" if use_browser else "http",
+                )
+                per.append(
+                    _run_one(
+                        connector,
+                        active_client,
+                        conn,
+                        postcodes_list,
+                        max_per_source,
+                        skip_known,
+                    )
+                )
+            finished = utc_now()
+            db.set_meta(conn, "last_refresh_at", finished.isoformat())
+    finally:
+        if browser_client is not None:
+            browser_client.close()
 
     return RefreshResult(started_at=started, finished_at=finished, per_connector=per)
 
@@ -135,7 +190,7 @@ def _known_source_urls(conn: object, source_name: SourceName) -> set[str]:
 
 def _run_one(
     connector: Connector,
-    client: HTTPClient,
+    client: HTTPClientProtocol,
     conn: object,  # sqlite3.Connection — typed `object` to avoid Protocol leaks
     postcodes: list[int],
     max_listings: int | None,

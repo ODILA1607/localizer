@@ -31,13 +31,12 @@ ALL_CONNECTORS: dict[SourceName, ConnectorFactory] = {
 }
 
 
-# Default enabled set — Immoscoop and Immovlan are reachable with
-# curl_cffi's Chrome impersonation (verified via probe). Zimmo and
-# Immoweb sit behind Cloudflare's JS-challenge and are deferred to
-# V1.1 (Playwright fallback or paid scraping API decision). They
-# remain selectable explicitly via `--source zimmo`/`--source immoweb`
-# once that escalation lands.
-DEFAULT_ENABLED: frozenset[SourceName] = frozenset({SourceName.IMMOSCOOP, SourceName.IMMOVLAN})
+# Default enabled set — all four bronnen now active.
+#   - Immoscoop, Immovlan: HTTP via curl_cffi (Chrome 131 impersonation).
+#   - Zimmo, Immoweb: real browser via Playwright (Cloudflare bypass).
+#     The runner spins up the browser client lazily; if Chromium isn't
+#     installed those two are skipped with a clear error per-connector.
+DEFAULT_ENABLED: frozenset[SourceName] = frozenset(SourceName)
 
 
 def enabled_connectors(
