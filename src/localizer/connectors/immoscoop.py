@@ -24,6 +24,7 @@ from collections.abc import Iterable
 from typing import Any, ClassVar
 
 from localizer.connectors._parsing import (
+    extract_immoscoop_property,
     extract_json_ld,
     find_jsonld_block,
     regex_extract_bedrooms,
@@ -151,10 +152,21 @@ class ImmoscoopConnector:
             postcode = postcode or int(m.group(1))
             gemeente = gemeente or "?"
 
-        # ---- Geo (House block)
-        geo = (house or {}).get("geo") or {}
-        lat = _coerce_float(geo.get("latitude"))
-        lng = _coerce_float(geo.get("longitude"))
+        # ---- Geo: prefer Next.js `pageProps.property.address.geo`
+        # (verified accurate per-listing in the 2026-05-05 probe).
+        # JSON-LD's `House.geo` is unreliable — sometimes the agent's
+        # office. Only fall back to it when Next.js data is absent.
+        ns_property = extract_immoscoop_property(text) or {}
+        ns_address = ns_property.get("address") or {}
+        ns_geo = ns_address.get("geo") or {}
+        lat = _coerce_float(ns_geo.get("lat"))
+        lng = _coerce_float(ns_geo.get("long"))
+        if lat is None or lng is None:
+            # Fallback: JSON-LD House.geo. Marked as best-effort
+            # because we know it can be wrong.
+            jsonld_geo = (house or {}).get("geo") or {}
+            lat = lat if lat is not None else _coerce_float(jsonld_geo.get("latitude"))
+            lng = lng if lng is not None else _coerce_float(jsonld_geo.get("longitude"))
 
         # ---- Price (Product.offers)
         offers = (product or {}).get("offers") or {}

@@ -24,7 +24,7 @@ from localizer.core.models import (
     SourceName,
 )
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +133,23 @@ def init_schema(conn: sqlite3.Connection) -> None:
         if "lng" not in existing_cols:
             conn.execute("ALTER TABLE listing ADD COLUMN lng REAL")
         conn.execute("UPDATE schema_version SET version = ?", (2,))
+    if current < 3:
+        # v3: Immoscoop's JSON-LD `House.geo` block turned out to be
+        # the agent's office, not the property. The new parser uses
+        # `pageProps.property.address.geo` instead. Wipe existing
+        # Immoscoop coordinates so the next refresh refills them
+        # from the reliable source. Other sources keep their geo.
+        conn.execute(
+            """
+            UPDATE listing
+            SET lat = NULL, lng = NULL
+            WHERE id IN (
+                SELECT listing_id FROM listing_source
+                WHERE source_name = 'immoscoop'
+            )
+            """
+        )
+        conn.execute("UPDATE schema_version SET version = ?", (3,))
 
 
 def initialise(db_path: Path | None = None) -> Path:

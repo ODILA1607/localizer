@@ -77,6 +77,38 @@ def extract_next_data(html: str) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def extract_immoscoop_property(html: str) -> dict[str, Any] | None:
+    """Return the Next.js `pageProps.property` dict from an Immoscoop
+    listing page, or None if not found.
+
+    Discovered via probe (2026-05-05): Immoscoop embeds the full
+    property data — including reliable `address.geo.lat/long` —
+    in an inline `<script>` tag. The shape is
+    `{"props": {"pageProps": {"property": {...}}}}`. JSON-LD's
+    `House.geo` on the same page is unreliable (often the agent's
+    office), so this extractor is the canonical source for
+    Immoscoop coordinates.
+    """
+    tree = HTMLParser(html)
+    for node in tree.css("script"):
+        text = node.text() or ""
+        if '"pageProps"' not in text or '"property"' not in text:
+            continue
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(data, dict):
+            continue
+        page_props = data.get("props", {}).get("pageProps")
+        if not isinstance(page_props, dict):
+            continue
+        prop = page_props.get("property")
+        if isinstance(prop, dict):
+            return prop
+    return None
+
+
 def extract_meta_content(html: str, *, key: str, attr: str = "property") -> str | None:
     """Return content of a `<meta {attr}="{key}">` tag, or None if absent.
 
