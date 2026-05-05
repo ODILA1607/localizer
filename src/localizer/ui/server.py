@@ -138,10 +138,12 @@ def create_app() -> FastAPI:
         prijs_min: Annotated[int | None, Query()] = None,
         prijs_max: Annotated[int | None, Query()] = None,
         slaapkamers_min: Annotated[int | None, Query()] = None,
+        opp_min: Annotated[int | None, Query()] = None,
         epc: Annotated[list[str] | None, Query()] = None,
         type_: Annotated[list[str] | None, Query(alias="type")] = None,
         staat: Annotated[list[str] | None, Query()] = None,
         bron: Annotated[list[str] | None, Query()] = None,
+        text: Annotated[str | None, Query()] = None,
         verberg_afgewezen: Annotated[bool, Query()] = True,
     ) -> HTMLResponse:
         db.initialise(default_db_path())
@@ -153,10 +155,12 @@ def create_app() -> FastAPI:
                 prijs_min=prijs_min,
                 prijs_max=prijs_max,
                 slaapkamers_min=slaapkamers_min,
+                opp_min=opp_min,
                 epc_label_in=epc or None,
                 type_in=type_ or None,
                 staat_in=staat or None,
                 source_in=bron or None,
+                text=text or None,
                 exclude_user_status=[UserStatus.AFGEWEZEN.value] if verberg_afgewezen else None,
                 limit=2000,
             )
@@ -177,8 +181,7 @@ def create_app() -> FastAPI:
 
         with_geo = []
         for listing in listings:
-            exact = listing.lat is not None and listing.lng is not None
-            if exact:
+            if listing.lat is not None and listing.lng is not None:
                 lat, lng = listing.lat, listing.lng
             else:
                 centroid = centroids.get(listing.postcode)
@@ -198,7 +201,6 @@ def create_app() -> FastAPI:
                     "id": str(listing.id),
                     "lat": lat,
                     "lng": lng,
-                    "exact": exact,
                     "postcode": listing.postcode,
                     "gemeente": listing.gemeente,
                     "straat": listing.straat,
@@ -214,7 +216,6 @@ def create_app() -> FastAPI:
                     ),
                 }
             )
-        exact_count = sum(1 for p in with_geo if p["exact"])
         return _TEMPLATES.TemplateResponse(
             request=request,
             name="map.html",
@@ -223,8 +224,27 @@ def create_app() -> FastAPI:
                 "pins": with_geo,
                 "total_count": len(listings),
                 "geo_count": len(with_geo),
-                "exact_count": exact_count,
-                "approx_count": len(with_geo) - exact_count,
+                "filters": {
+                    "gemeente": gemeente or "",
+                    "postcode": postcode,
+                    "prijs_min": prijs_min,
+                    "prijs_max": prijs_max,
+                    "slaapkamers_min": slaapkamers_min,
+                    "opp_min": opp_min,
+                    "epc": set(epc or []),
+                    "type": set(type_ or []),
+                    "staat": set(staat or []),
+                    "bron": set(bron or []),
+                    "text": text or "",
+                    "verberg_afgewezen": verberg_afgewezen,
+                },
+                "options": {
+                    "epc": [e.value for e in EpcLabel],
+                    "type": [t.value for t in PropertyType],
+                    "staat": [s.value for s in Condition],
+                    "bron": [s.value for s in SourceName],
+                    "user_status": [u.value for u in UserStatus],
+                },
             },
         )
 
