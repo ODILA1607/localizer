@@ -20,7 +20,6 @@ from fastapi import FastAPI, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BeforeValidator
 
 from localizer import __version__
 from localizer.connectors.base import HTTPClient
@@ -43,15 +42,18 @@ _HERE = Path(__file__).resolve().parent
 _TEMPLATES = Jinja2Templates(directory=str(_HERE / "templates"))
 
 
-def _none_if_empty(v: object) -> object:
-    """Treat empty strings (sent by browsers for blank number inputs)
-    the same as 'no value provided'."""
-    return None if v == "" else v
-
-
-# Optional-int from a form: accepts both `?x=` and `?x=42`. Without
-# this validator FastAPI's int parser raises 422 on the empty case.
-OptInt = Annotated[int | None, BeforeValidator(_none_if_empty)]
+def _to_int_or_none(value: str | None) -> int | None:
+    """Browsers submit blank number inputs as `?x=` (empty string).
+    FastAPI's int parser refuses that. We therefore receive the raw
+    string and parse it ourselves, returning None on empty / unparseable
+    instead of raising 422.
+    """
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
 
 
 def create_app() -> FastAPI:
@@ -62,11 +64,11 @@ def create_app() -> FastAPI:
     def home(
         request: Request,
         gemeente: Annotated[str | None, Query()] = None,
-        postcode: Annotated[OptInt, Query()] = None,
-        prijs_min: Annotated[OptInt, Query()] = None,
-        prijs_max: Annotated[OptInt, Query()] = None,
-        slaapkamers_min: Annotated[OptInt, Query()] = None,
-        opp_min: Annotated[OptInt, Query()] = None,
+        postcode: Annotated[str | None, Query()] = None,
+        prijs_min: Annotated[str | None, Query()] = None,
+        prijs_max: Annotated[str | None, Query()] = None,
+        slaapkamers_min: Annotated[str | None, Query()] = None,
+        opp_min: Annotated[str | None, Query()] = None,
         epc: Annotated[list[str] | None, Query()] = None,
         type_: Annotated[list[str] | None, Query(alias="type")] = None,
         staat: Annotated[list[str] | None, Query()] = None,
@@ -74,16 +76,24 @@ def create_app() -> FastAPI:
         text: Annotated[str | None, Query()] = None,
         verberg_afgewezen: Annotated[bool, Query()] = True,
     ) -> HTMLResponse:
+        # Parse the int-shaped filters here so blank inputs from the form
+        # ('?prijs_min=') become None instead of raising a 422.
+        postcode_i = _to_int_or_none(postcode)
+        prijs_min_i = _to_int_or_none(prijs_min)
+        prijs_max_i = _to_int_or_none(prijs_max)
+        slaapkamers_min_i = _to_int_or_none(slaapkamers_min)
+        opp_min_i = _to_int_or_none(opp_min)
+
         db.initialise(default_db_path())
         with db.connect(default_db_path()) as conn:
             listings = db.query_listings(
                 conn,
                 gemeente=gemeente or None,
-                postcode=postcode,
-                prijs_min=prijs_min,
-                prijs_max=prijs_max,
-                slaapkamers_min=slaapkamers_min,
-                opp_min=opp_min,
+                postcode=postcode_i,
+                prijs_min=prijs_min_i,
+                prijs_max=prijs_max_i,
+                slaapkamers_min=slaapkamers_min_i,
+                opp_min=opp_min_i,
                 epc_label_in=epc or None,
                 type_in=type_ or None,
                 staat_in=staat or None,
@@ -105,11 +115,11 @@ def create_app() -> FastAPI:
                 "version": __version__,
                 "filters": {
                     "gemeente": gemeente or "",
-                    "postcode": postcode,
-                    "prijs_min": prijs_min,
-                    "prijs_max": prijs_max,
-                    "slaapkamers_min": slaapkamers_min,
-                    "opp_min": opp_min,
+                    "postcode": postcode_i,
+                    "prijs_min": prijs_min_i,
+                    "prijs_max": prijs_max_i,
+                    "slaapkamers_min": slaapkamers_min_i,
+                    "opp_min": opp_min_i,
                     "epc": set(epc or []),
                     "type": set(type_ or []),
                     "staat": set(staat or []),
@@ -146,11 +156,11 @@ def create_app() -> FastAPI:
     def map_view(
         request: Request,
         gemeente: Annotated[str | None, Query()] = None,
-        postcode: Annotated[OptInt, Query()] = None,
-        prijs_min: Annotated[OptInt, Query()] = None,
-        prijs_max: Annotated[OptInt, Query()] = None,
-        slaapkamers_min: Annotated[OptInt, Query()] = None,
-        opp_min: Annotated[OptInt, Query()] = None,
+        postcode: Annotated[str | None, Query()] = None,
+        prijs_min: Annotated[str | None, Query()] = None,
+        prijs_max: Annotated[str | None, Query()] = None,
+        slaapkamers_min: Annotated[str | None, Query()] = None,
+        opp_min: Annotated[str | None, Query()] = None,
         epc: Annotated[list[str] | None, Query()] = None,
         type_: Annotated[list[str] | None, Query(alias="type")] = None,
         staat: Annotated[list[str] | None, Query()] = None,
@@ -158,16 +168,22 @@ def create_app() -> FastAPI:
         text: Annotated[str | None, Query()] = None,
         verberg_afgewezen: Annotated[bool, Query()] = True,
     ) -> HTMLResponse:
+        postcode_i = _to_int_or_none(postcode)
+        prijs_min_i = _to_int_or_none(prijs_min)
+        prijs_max_i = _to_int_or_none(prijs_max)
+        slaapkamers_min_i = _to_int_or_none(slaapkamers_min)
+        opp_min_i = _to_int_or_none(opp_min)
+
         db.initialise(default_db_path())
         with db.connect(default_db_path()) as conn:
             listings = db.query_listings(
                 conn,
                 gemeente=gemeente or None,
-                postcode=postcode,
-                prijs_min=prijs_min,
-                prijs_max=prijs_max,
-                slaapkamers_min=slaapkamers_min,
-                opp_min=opp_min,
+                postcode=postcode_i,
+                prijs_min=prijs_min_i,
+                prijs_max=prijs_max_i,
+                slaapkamers_min=slaapkamers_min_i,
+                opp_min=opp_min_i,
                 epc_label_in=epc or None,
                 type_in=type_ or None,
                 staat_in=staat or None,
@@ -238,11 +254,11 @@ def create_app() -> FastAPI:
                 "geo_count": len(with_geo),
                 "filters": {
                     "gemeente": gemeente or "",
-                    "postcode": postcode,
-                    "prijs_min": prijs_min,
-                    "prijs_max": prijs_max,
-                    "slaapkamers_min": slaapkamers_min,
-                    "opp_min": opp_min,
+                    "postcode": postcode_i,
+                    "prijs_min": prijs_min_i,
+                    "prijs_max": prijs_max_i,
+                    "slaapkamers_min": slaapkamers_min_i,
+                    "opp_min": opp_min_i,
                     "epc": set(epc or []),
                     "type": set(type_ or []),
                     "staat": set(staat or []),

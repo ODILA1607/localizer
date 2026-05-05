@@ -59,9 +59,7 @@ def test_index_accepts_blank_int_filters(populated_db: Path) -> None:
     strings must coerce to None — without it, FastAPI's int parser
     raises 422 and the filter form breaks."""
     with TestClient(ui_server.app) as client:
-        r = client.get(
-            "/?gemeente=&postcode=&prijs_min=&prijs_max=&slaapkamers_min=&opp_min="
-        )
+        r = client.get("/?gemeente=&postcode=&prijs_min=&prijs_max=&slaapkamers_min=&opp_min=")
     assert r.status_code == 200
     assert "Gent" in r.text  # seeded listing visible
 
