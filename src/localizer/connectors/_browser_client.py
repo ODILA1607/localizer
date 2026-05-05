@@ -99,14 +99,25 @@ class PlaywrightHTTPClient:
         self._rate_limiter.acquire(host)
         self._ensure_warmed(parsed.scheme, host)
 
-        log.debug("Browser-request GET %s", url)
-        response = self._context.request.get(url, timeout=self._timeout_ms)
-        status = response.status
-        if status >= 400:
-            raise RuntimeError(f"HTTP {status} on {url}")
-        body = response.body()
-        final_url = response.url
-        return RawListing(source_url=final_url, body=body)
+        log.debug("Browser GET %s", url)
+        page = self._context.new_page()
+        try:
+            response = page.goto(url, wait_until="domcontentloaded", timeout=self._timeout_ms)
+            try:
+                page.wait_for_load_state("networkidle", timeout=10_000)
+            except Exception as exc:
+                log.debug("networkidle timeout for %s: %s", url, exc)
+            if response is not None and response.status >= 400:
+                raise RuntimeError(f"HTTP {response.status} on {url}")
+            content = page.content()
+            final_url = page.url
+        finally:
+            page.close()
+
+        # `page.content()` returns the rendered HTML. For XML responses
+        # (sitemap.xml) Chromium wraps them in an HTML viewer; the
+        # `_sitemaps` helper strips that wrapper before XML parsing.
+        return RawListing(source_url=final_url, body=content.encode("utf-8"))
 
     def _ensure_warmed(self, scheme: str, host: str) -> None:
         """Visit the homepage once via a real Page so Cloudflare's JS
