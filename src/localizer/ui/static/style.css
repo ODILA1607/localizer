@@ -30,6 +30,15 @@ a:hover { text-decoration: underline; }
 
 .map-meta { padding: 0.4rem 0; color: #6e7781; font-size: 0.85rem; }
 
+.topbar-right { display: flex; align-items: center; gap: 0.4rem; }
+.topbar-right .full-toggle {
+  color: #aab1ba;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: pointer;
+}
 .topbar-right input,
 .topbar-right button {
   padding: 0.35rem 0.6rem;

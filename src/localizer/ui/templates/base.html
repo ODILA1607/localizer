@@ -24,6 +24,9 @@
     </div>
     <form action="/refresh" method="post" class="topbar-right">
       <input type="number" name="limit" placeholder="limit (e.g. 50)" min="1" max="2000">
+      <label class="full-toggle" title="Re-fetch every URL instead of only new ones (slower).">
+        <input type="checkbox" name="full" value="true"> full
+      </label>
       <button type="submit">Refresh now</button>
     </form>
   </header>

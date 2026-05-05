@@ -65,6 +65,15 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="N",
         help="Cap fetched listings per source. Useful for first runs.",
     )
+    refresh.add_argument(
+        "--full",
+        action="store_true",
+        help=(
+            "Re-fetch every URL instead of skipping ones already in the DB. "
+            "By default we skip known listings for speed; use --full to pick "
+            "up price changes, new photos, etc."
+        ),
+    )
 
     serve = sub.add_parser("serve", help="Launch the local web UI (default).")
     serve.add_argument("--port", type=int, default=8765, help="port to bind on 127.0.0.1")
@@ -91,9 +100,9 @@ def _print_summary(result: RefreshResult) -> None:
     print(f"Finished: {result.finished_at.isoformat()} ({duration:.1f}s)")
     for cr in result.per_connector:
         print(
-            f"  {cr.name.value:<10} discovered={cr.discovered}  fetched={cr.fetched}"
-            f"  parsed={cr.parsed}  inserted={cr.inserted}  merged={cr.merged}"
-            f"  errors={len(cr.errors)}"
+            f"  {cr.name.value:<10} new={cr.discovered}  skipped={cr.skipped_known}"
+            f"  fetched={cr.fetched}  parsed={cr.parsed}  inserted={cr.inserted}"
+            f"  merged={cr.merged}  errors={len(cr.errors)}"
         )
         for err in cr.errors[:5]:
             print(f"    ! {err}")
@@ -105,7 +114,7 @@ def _print_summary(result: RefreshResult) -> None:
     )
 
 
-def _do_refresh(source_filter: str | None, limit: int | None) -> int:
+def _do_refresh(source_filter: str | None, limit: int | None, full: bool) -> int:
     if source_filter is None:
         connectors = enabled_connectors(DEFAULT_ENABLED)
     else:
@@ -118,6 +127,7 @@ def _do_refresh(source_filter: str | None, limit: int | None) -> int:
     db_path = default_db_path()
     print(f"Database: {db_path}")
     print(f"Sources:  {', '.join(c.display_name for c in connectors)}")
+    print(f"Mode:     {'full re-fetch' if full else 'skip already-known URLs'}")
     if limit is not None:
         print(f"Limit:    {limit} listings per source")
     print()
@@ -128,6 +138,7 @@ def _do_refresh(source_filter: str | None, limit: int | None) -> int:
             client=client,
             db_path=db_path,
             max_per_source=limit,
+            skip_known=not full,
         )
 
     _print_summary(result)
@@ -167,7 +178,7 @@ def cli(argv: list[str] | None = None) -> int:
         return _do_serve(port=8765, open_browser=True)
 
     if args.cmd == "refresh":
-        return _do_refresh(args.source, args.limit)
+        return _do_refresh(args.source, args.limit, args.full)
 
     if args.cmd == "serve":
         return _do_serve(port=args.port, open_browser=not args.no_browser)

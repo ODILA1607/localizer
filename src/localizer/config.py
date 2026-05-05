@@ -38,7 +38,7 @@ def is_in_scope(postcode: int) -> bool:
 HTTP_IMPERSONATE = "chrome131"
 ROBOTS_USER_AGENT = "*"
 OPERATOR_CONTACT = "info@odila.be"
-DEFAULT_RATE_LIMIT_PER_MIN = 60
+DEFAULT_RATE_LIMIT_PER_MIN = 180
 HTTP_TIMEOUT_SECONDS = 30
 
 # ---------------------------------------------------------------------------

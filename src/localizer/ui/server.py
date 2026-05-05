@@ -196,6 +196,7 @@ def create_app() -> FastAPI:
     def refresh(
         source: Annotated[str | None, Form()] = None,
         limit: Annotated[int | None, Form()] = None,
+        full: Annotated[str | None, Form()] = None,
     ) -> RedirectResponse:
         if source:
             connectors = enabled_connectors(frozenset({SourceName(source)}))
@@ -209,6 +210,7 @@ def create_app() -> FastAPI:
                 client=client,
                 db_path=default_db_path(),
                 max_per_source=limit,
+                skip_known=full is None,
             )
         return RedirectResponse("/", status_code=303)
 

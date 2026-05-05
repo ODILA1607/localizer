@@ -26,6 +26,7 @@ from localizer.config import POSTCODE_RANGES
 from localizer.connectors.base import (
     Connector,
     HTTPClient,
+    ListingRef,
     RobotsBlockedError,
 )
 from localizer.core import db, dedup
@@ -43,6 +44,7 @@ class ConnectorResult:
 
     name: SourceName
     discovered: int = 0
+    skipped_known: int = 0
     fetched: int = 0
     parsed: int = 0
     inserted: int = 0
@@ -92,12 +94,18 @@ def run_refresh(
     db_path: Path,
     postcodes: Iterable[int] | None = None,
     max_per_source: int | None = None,
+    skip_known: bool = True,
 ) -> RefreshResult:
     """Run one refresh pass and return aggregated results.
 
     `max_per_source` caps the number of listings fetched per connector;
     useful for the first runs against a fresh DB so we don't burn an hour
     crawling thousands of pages before knowing the parser works.
+
+    `skip_known` (default True) skips URLs we've already stored —
+    dramatic speedup on subsequent refreshes since only new listings
+    are fetched. Pass False (`--full` from CLI) for a full re-fetch
+    that picks up price changes / EPC updates / new photos.
     """
     started = utc_now()
     postcodes_list = list(postcodes) if postcodes is not None else _all_postcodes()
@@ -107,11 +115,22 @@ def run_refresh(
     with db.connect(db_path) as conn:
         for connector in connectors:
             log.info("Running connector: %s", connector.name)
-            per.append(_run_one(connector, client, conn, postcodes_list, max_per_source))
+            per.append(
+                _run_one(connector, client, conn, postcodes_list, max_per_source, skip_known)
+            )
         finished = utc_now()
         db.set_meta(conn, "last_refresh_at", finished.isoformat())
 
     return RefreshResult(started_at=started, finished_at=finished, per_connector=per)
+
+
+def _known_source_urls(conn: object, source_name: SourceName) -> set[str]:
+    """Return the set of source_urls already stored for this source."""
+    rows = conn.execute(  # type: ignore[attr-defined]
+        "SELECT source_url FROM listing_source WHERE source_name = ?",
+        (source_name.value,),
+    ).fetchall()
+    return {row[0] for row in rows}
 
 
 def _run_one(
@@ -120,19 +139,21 @@ def _run_one(
     conn: object,  # sqlite3.Connection — typed `object` to avoid Protocol leaks
     postcodes: list[int],
     max_listings: int | None,
+    skip_known: bool,
 ) -> ConnectorResult:
     result = ConnectorResult(name=connector.name)
+    known_urls: set[str] = _known_source_urls(conn, connector.name) if skip_known else set()
 
     try:
         refs_iter = iter(connector.discover(client, postcodes))
-        if max_listings is None:
-            refs = list(refs_iter)
-        else:
-            refs = []
-            for ref in refs_iter:
-                refs.append(ref)
-                if len(refs) >= max_listings:
-                    break
+        refs: list[ListingRef] = []
+        for ref in refs_iter:
+            if skip_known and ref.url in known_urls:
+                result.skipped_known += 1
+                continue
+            refs.append(ref)
+            if max_listings is not None and len(refs) >= max_listings:
+                break
     except NotImplementedError:
         result.errors.append("discover() not implemented yet")
         return result
@@ -145,7 +166,12 @@ def _run_one(
         return result
 
     result.discovered = len(refs)
-    log.info("%s: discovered %d candidate listings", connector.name, len(refs))
+    log.info(
+        "%s: discovered %d new listings (skipped %d already known)",
+        connector.name,
+        len(refs),
+        result.skipped_known,
+    )
 
     for ref in refs:
         try:
