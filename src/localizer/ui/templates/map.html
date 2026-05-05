@@ -8,8 +8,9 @@
 
 <div class="map-meta">
   {{ geo_count }} pin(s) op de kaart · {{ total_count }} listing(s) in totaal
+  <span class="muted">({{ exact_count }} exact, {{ approx_count }} op postcode-niveau)</span>
   {% if total_count > geo_count %}
-    <span class="muted">({{ total_count - geo_count }} zonder coördinaten)</span>
+    <span class="muted">· {{ total_count - geo_count }} zonder lokatie</span>
   {% endif %}
 </div>
 
@@ -45,12 +46,22 @@
   const markers = [];
   pins.forEach(p => {
     const colour = sourceColours[p.source_name] || '#1f2328';
-    const marker = L.circleMarker([p.lat, p.lng], {
+    // Exact pins are filled solid; approximate (postcode-centroid) pins
+    // get a hollow style with dashed outline so the user knows the
+    // location is only postcode-accurate.
+    const marker = L.circleMarker([p.lat, p.lng], p.exact ? {
       radius: 7,
       color: colour,
       weight: 2,
       fillColor: colour,
       fillOpacity: 0.65,
+    } : {
+      radius: 6,
+      color: colour,
+      weight: 2,
+      dashArray: '3,3',
+      fillColor: colour,
+      fillOpacity: 0.2,
     });
     const popup = `
       ${p.foto ? `<img src="${p.foto}" style="width:240px;height:140px;object-fit:cover;border-radius:4px;margin-bottom:6px;" onerror="this.style.display='none'">` : ''}
@@ -59,6 +70,7 @@
       ${p.titel ? `<br>${escapeHtml(p.titel)}` : ''}
       <br><strong>${priceLabel(p.prijs_eur)}</strong>
       ${p.epc_label ? ` · EPC ${escapeHtml(p.epc_label)}` : ''}
+      ${!p.exact ? `<br><span style="color:#6e7781;font-size:0.85em">(positie geschat op postcode-niveau)</span>` : ''}
       <br><a href="${p.source_url}" target="_blank" rel="noopener">Open op ${escapeHtml(p.source_name)} ↗</a>
     `;
     marker.bindPopup(popup);

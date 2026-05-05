@@ -160,27 +160,61 @@ def create_app() -> FastAPI:
                 exclude_user_status=[UserStatus.AFGEWEZEN.value] if verberg_afgewezen else None,
                 limit=2000,
             )
-        # Drop entries without coordinates — they can't be pinned.
-        with_geo = [
-            {
-                "id": str(listing.id),
-                "lat": listing.lat,
-                "lng": listing.lng,
-                "postcode": listing.postcode,
-                "gemeente": listing.gemeente,
-                "straat": listing.straat,
-                "titel": listing.titel,
-                "prijs_eur": listing.prijs_eur,
-                "epc_label": listing.epc_label.value if listing.epc_label else None,
-                "type": listing.type.value,
-                "user_status": listing.user_status.value,
-                "foto": str(listing.hoofd_foto_url) if listing.hoofd_foto_url else None,
-                "source_url": str(listing.sources[0].source_url) if listing.sources else "",
-                "source_name": listing.sources[0].source_name.value if listing.sources else "",
-            }
-            for listing in listings
-            if listing.lat is not None and listing.lng is not None
-        ]
+        # Build per-postcode centroids from listings that DO have exact
+        # lat/lng. Listings without coordinates fall back to their
+        # postcode's centroid (with small deterministic jitter so pins
+        # don't stack), tagged as approximate. Self-improving: every
+        # refresh that brings new lat/lng data widens centroid coverage.
+        centroids: dict[int, tuple[float, float]] = {}
+        by_postcode: dict[int, list[tuple[float, float]]] = {}
+        for listing in listings:
+            if listing.lat is not None and listing.lng is not None:
+                by_postcode.setdefault(listing.postcode, []).append((listing.lat, listing.lng))
+        for pc, coords in by_postcode.items():
+            avg_lat = sum(c[0] for c in coords) / len(coords)
+            avg_lng = sum(c[1] for c in coords) / len(coords)
+            centroids[pc] = (avg_lat, avg_lng)
+
+        with_geo = []
+        for listing in listings:
+            exact = listing.lat is not None and listing.lng is not None
+            if exact:
+                lat, lng = listing.lat, listing.lng
+            else:
+                centroid = centroids.get(listing.postcode)
+                if centroid is None:
+                    continue  # no way to place on the map
+                # Deterministic jitter from UUID hash (~50-150m). Keeps
+                # multiple listings in the same postcode from stacking
+                # but stays within the postcode area.
+                listing_hash = hash(str(listing.id))
+                jitter_lat = ((listing_hash % 1000) - 500) * 1.5e-5
+                jitter_lng = (((listing_hash // 1000) % 1000) - 500) * 2e-5
+                lat = centroid[0] + jitter_lat
+                lng = centroid[1] + jitter_lng
+
+            with_geo.append(
+                {
+                    "id": str(listing.id),
+                    "lat": lat,
+                    "lng": lng,
+                    "exact": exact,
+                    "postcode": listing.postcode,
+                    "gemeente": listing.gemeente,
+                    "straat": listing.straat,
+                    "titel": listing.titel,
+                    "prijs_eur": listing.prijs_eur,
+                    "epc_label": listing.epc_label.value if listing.epc_label else None,
+                    "type": listing.type.value,
+                    "user_status": listing.user_status.value,
+                    "foto": str(listing.hoofd_foto_url) if listing.hoofd_foto_url else None,
+                    "source_url": str(listing.sources[0].source_url) if listing.sources else "",
+                    "source_name": (
+                        listing.sources[0].source_name.value if listing.sources else ""
+                    ),
+                }
+            )
+        exact_count = sum(1 for p in with_geo if p["exact"])
         return _TEMPLATES.TemplateResponse(
             request=request,
             name="map.html",
@@ -189,6 +223,8 @@ def create_app() -> FastAPI:
                 "pins": with_geo,
                 "total_count": len(listings),
                 "geo_count": len(with_geo),
+                "exact_count": exact_count,
+                "approx_count": len(with_geo) - exact_count,
             },
         )
 
