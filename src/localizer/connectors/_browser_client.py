@@ -69,8 +69,23 @@ class PlaywrightHTTPClient:
 
         try:
             self._pw: Playwright = sync_playwright().start()
-            self._browser: Browser = self._pw.chromium.launch(headless=True)
+            self._browser: Browser = self._pw.chromium.launch(
+                headless=True,
+                # Drop the obvious headless-ness telltales that
+                # Cloudflare's bot-management looks at first.
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-features=IsolateOrigins,site-per-process",
+                ],
+            )
             self._context: BrowserContext = self._browser.new_context(
+                # Real-Chrome UA — without this the default contains
+                # "HeadlessChrome", which Cloudflare flags immediately.
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/130.0.0.0 Safari/537.36"
+                ),
                 locale="nl-BE",
                 viewport={"width": 1366, "height": 768},
                 extra_http_headers={
@@ -79,6 +94,17 @@ class PlaywrightHTTPClient:
                 },
             )
             self._context.set_default_timeout(self._timeout_ms)
+
+            # `playwright-stealth` patches the runtime to hide the
+            # other tells: `navigator.webdriver`, missing plugins,
+            # `chrome.runtime`, WebGL fingerprint, …
+            try:
+                from playwright_stealth import Stealth
+
+                Stealth().apply_stealth_sync(self._context)
+                log.debug("playwright-stealth patches applied to browser context")
+            except Exception as exc:
+                log.warning("playwright-stealth not applied: %s", exc)
         except Exception as exc:
             raise BrowserUnavailableError(
                 f"Could not launch Chromium ({exc}). Install it with: playwright install chromium"
