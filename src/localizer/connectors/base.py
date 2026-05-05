@@ -164,6 +164,17 @@ class RobotsCache:
                 else:
                     parser.set_url(robots_url)
                     parser.read()
+                    # stdlib read() sets disallow_all=True on 401/403,
+                    # which contradicts our fail-open policy. Override:
+                    # a 403 on robots.txt is almost always Cloudflare,
+                    # not the site genuinely forbidding us.
+                    if getattr(parser, "disallow_all", False):
+                        log.info(
+                            "robots.txt at %s denied via stdlib read — failing open",
+                            robots_url,
+                        )
+                        parser.disallow_all = False  # type: ignore[attr-defined]
+                        parser.allow_all = True  # type: ignore[attr-defined]
             except Exception as exc:
                 log.warning("robots.txt fetch failed for %s: %s — failing open", host, exc)
                 parser.allow_all = True  # type: ignore[attr-defined]
