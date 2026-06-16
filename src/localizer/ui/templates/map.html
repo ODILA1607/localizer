@@ -5,6 +5,8 @@
 {% block content %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
 
 <div class="layout">
   {% with form_action="/map" %}{% include "_filters.html" %}{% endwith %}
@@ -23,6 +25,7 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script id="pins-data" type="application/json">{{ pins | tojson }}</script>
 <script>
 (function () {
@@ -31,9 +34,15 @@
   // Centre roughly on West-/Oost-Vlaanderen.
   const map = L.map('map').setView([51.05, 3.6], 9);
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  // HiDPI-ready tile source. CartoDB Voyager serves @2x tiles on
+  // retina/4K displays via the `{r}` placeholder, where standard OSM
+  // doesn't — that's why the previous OSM tiles looked blurry on
+  // high-DPI screens while the vector pin markers stayed crisp.
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
     maxZoom: 19,
-    attribution: '© OpenStreetMap',
+    detectRetina: true,
+    subdomains: 'abcd',
+    attribution: '© OpenStreetMap contributors © CARTO',
   }).addTo(map);
 
   const sourceColours = {
@@ -41,12 +50,33 @@
     immovlan:  '#b86b0c',
     zimmo:     '#8250df',
     immoweb:   '#cf222e',
+    diversen:  '#4f6f3a',  /* groen-grijs voor handmatig toegevoegde URLs */
   };
 
   function priceLabel(eur) {
     if (eur == null) return 'prijs onbekend';
     return '€ ' + eur.toLocaleString('nl-BE').replace(/,/g, '.');
   }
+
+  // markercluster groups pins per zoom level — handles 50k+ markers
+  // without melting the browser. `chunkedLoading` adds them in async
+  // batches so the page stays responsive during initial render.
+  //
+  // Tuning notes:
+  //   - `disableClusteringAtZoom: 12` → at city-overview level (e.g.
+  //      "heel Gent in beeld") you already see individual blue stippen
+  //      i.p.v. één bolletje "1234". Was 16 (street level) — too late.
+  //   - `maxClusterRadius: 35` → cluster cell is ~35 px instead of the
+  //      default 80 px. Smaller cells = clusters break apart sooner
+  //      when you zoom in, even at zoom levels where clustering is
+  //      still active.
+  const cluster = L.markerClusterGroup({
+    chunkedLoading: true,
+    showCoverageOnHover: false,
+    spiderfyOnMaxZoom: true,
+    disableClusteringAtZoom: 12,
+    maxClusterRadius: 35,
+  });
 
   const markers = [];
   pins.forEach(p => {
@@ -68,9 +98,11 @@
       <br><a href="${p.source_url}" target="_blank" rel="noopener">Open op ${escapeHtml(p.source_name)} ↗</a>
     `;
     marker.bindPopup(popup);
-    marker.addTo(map);
+    cluster.addLayer(marker);
     markers.push(marker);
   });
+
+  map.addLayer(cluster);
 
   if (markers.length > 0) {
     const group = L.featureGroup(markers);

@@ -1,0 +1,36 @@
+# Render Blueprint — hosted read-only demo of Localizer.
+#
+# This deploys the SAME FastAPI app Thomas runs on his desktop, but in a
+# locked-down demo mode driven entirely by env vars (see envVars below):
+#   - LOCALIZER_DB_PATH  → serve the committed snapshot DB, not a per-user file
+#   - LOCALIZER_READONLY → disable /refresh and /add-url (no live scraping)
+#   - LOCALIZER_AUTH_*   → HTTP Basic Auth so the demo isn't public
+#
+# After connecting this repo as a Blueprint in the Render dashboard, set
+# LOCALIZER_AUTH_USER and LOCALIZER_AUTH_PASS (marked sync:false) under the
+# service's Environment tab — they are intentionally NOT committed to git.
+#
+# NOTE on the free plan: the service sleeps after ~15 min idle and cold-starts
+# in 30-60s. For a live event demo, either bump to `plan: starter` (paid, no
+# sleep) or open the URL a minute before presenting to warm it up.
+
+services:
+  - type: web
+    name: localizer-demo
+    runtime: python
+    plan: free
+    region: frankfurt
+    branch: render-demo
+    buildCommand: pip install .
+    startCommand: uvicorn localizer.ui.server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.1"
+      - key: LOCALIZER_DB_PATH
+        value: /opt/render/project/src/demo/localizer.db
+      - key: LOCALIZER_READONLY
+        value: "1"
+      - key: LOCALIZER_AUTH_USER
+        sync: false
+      - key: LOCALIZER_AUTH_PASS
+        sync: false

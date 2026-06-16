@@ -29,6 +29,11 @@ class SourceName(enum.StrEnum):
     ZIMMO = "zimmo"
     IMMOSCOOP = "immoscoop"
     IMMOVLAN = "immovlan"
+    # Manueel toegevoegde URLs van willekeurige sites — gebruikt door
+    # de generieke fallback-parser (Schema.org JSON-LD → OpenGraph →
+    # regex). Lower data-quality dan de native connectors, maar werkt
+    # op vrijwel elke vastgoedsite.
+    DIVERSEN = "diversen"
 
 
 class ListingStatus(enum.StrEnum):

@@ -34,7 +34,18 @@ def default_db_path() -> Path:
     """`%LOCALAPPDATA%\\Localizer\\localizer.db` on Windows; ~/.localizer/ elsewhere.
 
     Created on first call.
+
+    Hosted deployments (e.g. the Render demo) set `LOCALIZER_DB_PATH` to
+    point at a committed read-only snapshot instead of the per-user app
+    folder. On Thomas' desktop the env var is unset and we fall back to
+    the OS-appropriate location below.
     """
+    override = os.environ.get("LOCALIZER_DB_PATH")
+    if override:
+        path = Path(override)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
     if os.name == "nt":
         base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
     else:
@@ -231,8 +242,7 @@ def mark_source_gone(conn: sqlite3.Connection, source: SourceName, source_id: st
 # ---------------------------------------------------------------------------
 # UI-side helpers: filtered query, status update, app-meta
 # ---------------------------------------------------------------------------
-def query_listings(
-    conn: sqlite3.Connection,
+def _build_filter_clause(
     *,
     gemeente: str | None = None,
     postcode: int | None = None,
@@ -247,9 +257,10 @@ def query_listings(
     exclude_user_status: list[str] | None = None,
     source_in: list[str] | None = None,
     text: str | None = None,
-    limit: int | None = None,
-) -> list[Listing]:
-    """Filtered listing query. Empty filter args mean 'no constraint'."""
+) -> tuple[str, list[object]]:
+    """Build the WHERE clause + params for the listing-filter shape used by
+    `query_listings` and `count_listings`. Returns ('', []) when there are
+    no constraints."""
     where: list[str] = []
     params: list[object] = []
 
@@ -302,15 +313,189 @@ def query_listings(
         like = f"%{text.lower()}%"
         params.extend([like, like])
 
-    sql = "SELECT * FROM listing"
-    if where:
-        sql += " WHERE " + " AND ".join(where)
-    sql += " ORDER BY created_at DESC"
+    clause = (" WHERE " + " AND ".join(where)) if where else ""
+    return clause, params
+
+
+def query_listings(
+    conn: sqlite3.Connection,
+    *,
+    gemeente: str | None = None,
+    postcode: int | None = None,
+    prijs_min: int | None = None,
+    prijs_max: int | None = None,
+    slaapkamers_min: int | None = None,
+    opp_min: int | None = None,
+    epc_label_in: list[str] | None = None,
+    type_in: list[str] | None = None,
+    staat_in: list[str] | None = None,
+    user_status_in: list[str] | None = None,
+    exclude_user_status: list[str] | None = None,
+    source_in: list[str] | None = None,
+    text: str | None = None,
+    limit: int | None = None,
+    offset: int | None = None,
+) -> list[Listing]:
+    """Filtered listing query. Empty filter args mean 'no constraint'.
+
+    `created_at` alone isn't a stable sort key (a single refresh batch
+    shares one timestamp), so we tie-break on `id DESC` to keep
+    pagination consistent across page hops.
+    """
+    clause, params = _build_filter_clause(
+        gemeente=gemeente,
+        postcode=postcode,
+        prijs_min=prijs_min,
+        prijs_max=prijs_max,
+        slaapkamers_min=slaapkamers_min,
+        opp_min=opp_min,
+        epc_label_in=epc_label_in,
+        type_in=type_in,
+        staat_in=staat_in,
+        user_status_in=user_status_in,
+        exclude_user_status=exclude_user_status,
+        source_in=source_in,
+        text=text,
+    )
+    sql = "SELECT * FROM listing" + clause + " ORDER BY created_at DESC, id DESC"
     if limit is not None:
         sql += f" LIMIT {int(limit)}"
+    if offset is not None and offset > 0:
+        # OFFSET requires LIMIT in SQLite — supply a sentinel if absent.
+        if limit is None:
+            sql += " LIMIT -1"
+        sql += f" OFFSET {int(offset)}"
 
     rows = conn.execute(sql, params).fetchall()
     return [_row_to_listing(conn, r) for r in rows]
+
+
+def count_listings(
+    conn: sqlite3.Connection,
+    *,
+    gemeente: str | None = None,
+    postcode: int | None = None,
+    prijs_min: int | None = None,
+    prijs_max: int | None = None,
+    slaapkamers_min: int | None = None,
+    opp_min: int | None = None,
+    epc_label_in: list[str] | None = None,
+    type_in: list[str] | None = None,
+    staat_in: list[str] | None = None,
+    user_status_in: list[str] | None = None,
+    exclude_user_status: list[str] | None = None,
+    source_in: list[str] | None = None,
+    text: str | None = None,
+) -> int:
+    """Count listings matching the same filter shape as `query_listings`."""
+    clause, params = _build_filter_clause(
+        gemeente=gemeente,
+        postcode=postcode,
+        prijs_min=prijs_min,
+        prijs_max=prijs_max,
+        slaapkamers_min=slaapkamers_min,
+        opp_min=opp_min,
+        epc_label_in=epc_label_in,
+        type_in=type_in,
+        staat_in=staat_in,
+        user_status_in=user_status_in,
+        exclude_user_status=exclude_user_status,
+        source_in=source_in,
+        text=text,
+    )
+    sql = "SELECT COUNT(*) FROM listing" + clause
+    return int(conn.execute(sql, params).fetchone()[0])
+
+
+def query_listing_pins(
+    conn: sqlite3.Connection,
+    *,
+    gemeente: str | None = None,
+    postcode: int | None = None,
+    prijs_min: int | None = None,
+    prijs_max: int | None = None,
+    slaapkamers_min: int | None = None,
+    opp_min: int | None = None,
+    epc_label_in: list[str] | None = None,
+    type_in: list[str] | None = None,
+    staat_in: list[str] | None = None,
+    user_status_in: list[str] | None = None,
+    exclude_user_status: list[str] | None = None,
+    source_in: list[str] | None = None,
+    text: str | None = None,
+    limit: int | None = None,
+) -> list[dict[str, object]]:
+    """Flat single-query lookup for the map view.
+
+    Returns lightweight dicts (just what the map template needs) by
+    JOINing `listing` with `listing_source` in one round-trip. Avoids
+    the N+1 problem of `query_listings` → `_row_to_listing` (which
+    fires one extra SELECT per listing to load source rows; with 26k
+    listings that's 26k extra queries = 2-5s of SQLite overhead).
+
+    Each canonical listing typically has exactly one source row in V1
+    (fingerprint = (source_name, source_id)). When multiple exist we
+    keep the first by source_name alphabetical order.
+    """
+    clause, params = _build_filter_clause(
+        gemeente=gemeente,
+        postcode=postcode,
+        prijs_min=prijs_min,
+        prijs_max=prijs_max,
+        slaapkamers_min=slaapkamers_min,
+        opp_min=opp_min,
+        epc_label_in=epc_label_in,
+        type_in=type_in,
+        staat_in=staat_in,
+        user_status_in=user_status_in,
+        exclude_user_status=exclude_user_status,
+        source_in=source_in,
+        text=text,
+    )
+    sql = (
+        """
+        SELECT
+            l.id,
+            l.lat, l.lng,
+            l.postcode, l.gemeente, l.straat,
+            l.titel, l.prijs_eur, l.epc_label, l.type, l.user_status,
+            l.hoofd_foto_url AS foto,
+            ls.source_url, ls.source_name
+        FROM listing l
+        LEFT JOIN listing_source ls ON ls.listing_id = l.id
+        """
+        + clause
+        + " ORDER BY l.id, ls.source_name"
+    )
+    if limit is not None:
+        sql += f" LIMIT {int(limit)}"
+
+    seen: set[str] = set()
+    out: list[dict[str, object]] = []
+    for row in conn.execute(sql, params):
+        lid = row["id"]
+        if lid in seen:
+            continue  # LEFT JOIN dupes when multiple source rows exist
+        seen.add(lid)
+        out.append(
+            {
+                "id": lid,
+                "lat": row["lat"],
+                "lng": row["lng"],
+                "postcode": row["postcode"],
+                "gemeente": row["gemeente"],
+                "straat": row["straat"],
+                "titel": row["titel"],
+                "prijs_eur": row["prijs_eur"],
+                "epc_label": row["epc_label"],
+                "type": row["type"],
+                "user_status": row["user_status"],
+                "foto": row["foto"],
+                "source_url": row["source_url"] or "",
+                "source_name": row["source_name"] or "",
+            }
+        )
+    return out
 
 
 def update_user_status(conn: sqlite3.Connection, listing_id: str, status: str) -> None:

@@ -5,7 +5,15 @@
   {% with form_action="/" %}{% include "_filters.html" %}{% endwith %}
 
   <section class="results">
-    <p class="result-count">{{ listings|length }} listing(s)</p>
+    <p class="result-count">
+      {% if filtered_count > 0 %}
+        <strong>{{ '{:,}'.format(filtered_count).replace(',', '.') }}</strong> pand(en) gevonden
+        <span class="muted">· toont {{ page_first }}–{{ page_last }}
+          {% if total_pages > 1 %}· pagina {{ page }} van {{ total_pages }}{% endif %}</span>
+      {% else %}
+        <strong>0</strong> panden gevonden
+      {% endif %}
+    </p>
     {% if not listings %}
       <p class="empty">Geen listings gevonden. Pas de filters aan, of klik <em>Refresh now</em> bovenaan.</p>
     {% endif %}
@@ -61,6 +69,24 @@
         </div>
       </article>
     {% endfor %}
+
+    {% if total_pages > 1 %}
+      <nav class="pagination" aria-label="Paginatie">
+        {% if prev_url %}
+          <a class="page-btn" href="{{ prev_url }}">← Vorige</a>
+        {% else %}
+          <span class="page-btn disabled">← Vorige</span>
+        {% endif %}
+
+        <span class="page-indicator">Pagina {{ page }} van {{ total_pages }}</span>
+
+        {% if next_url %}
+          <a class="page-btn" href="{{ next_url }}">Volgende →</a>
+        {% else %}
+          <span class="page-btn disabled">Volgende →</span>
+        {% endif %}
+      </nav>
+    {% endif %}
   </section>
 </div>
 {% endblock %}

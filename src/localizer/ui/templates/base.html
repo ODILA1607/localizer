@@ -20,8 +20,12 @@
       <nav class="nav">
         <a href="/">Lijst</a>
         <a href="/map">Kaart</a>
+        {% if not readonly %}
+        <a href="/add-url">+ URL toevoegen</a>
+        {% endif %}
       </nav>
     </div>
+    {% if not readonly %}
     <form action="/refresh" method="post" class="topbar-right">
       <input type="number" name="limit" placeholder="limit (e.g. 50)" min="1" max="2000">
       <label class="full-toggle" title="Re-fetch every URL instead of only new ones (slower).">
@@ -29,6 +33,9 @@
       </label>
       <button type="submit">Refresh now</button>
     </form>
+    {% else %}
+    <span class="topbar-right muted">demo · alleen-lezen</span>
+    {% endif %}
   </header>
 
   <main>
